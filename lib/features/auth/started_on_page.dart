@@ -48,11 +48,10 @@ class StartedOnPage extends ConsumerWidget {
                   initialDate: startedOn ?? today,
                 );
                 if (date == null || !context.mounted || !sameScope()) return;
-                if (ref.read(currentCoupleProvider).isLoading) return;
-                final currentDate = ref
-                    .read(currentCoupleProvider)
-                    .value
-                    ?.startedOn;
+                // Realtime이 커플을 다시 읽는 중이면 끝날 때까지 기다린 값으로 비교한다
+                final currentDate =
+                    (await ref.read(currentCoupleProvider.future))?.startedOn;
+                if (!context.mounted || !sameScope()) return;
                 if (isEditing &&
                     currentDate != null &&
                     date.isAfter(currentDate)) {
@@ -79,9 +78,15 @@ class StartedOnPage extends ConsumerWidget {
                   if (confirmed != true || !context.mounted || !sameScope()) {
                     return;
                   }
-                  if (ref.read(currentCoupleProvider).isLoading) return;
-                  if (ref.read(currentCoupleProvider).value?.startedOn !=
-                      currentDate) {
+                  final latest =
+                      (await ref.read(currentCoupleProvider.future))?.startedOn;
+                  if (!context.mounted || !sameScope()) return;
+                  if (latest != currentDate) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('사귄 날이 방금 바뀌었어요. 확인 후 다시 골라 주세요'),
+                      ),
+                    );
                     return;
                   }
                 }

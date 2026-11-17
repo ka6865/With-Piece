@@ -288,4 +288,26 @@ void main() {
     reloaded.complete();
     await tester.pumpAndSettle();
   });
+
+  testWidgets('커플을 다시 읽는 중에 고른 날짜도 재조회가 끝나면 저장한다', (tester) async {
+    Completer<Couple>? reload;
+    final couples = await pumpPage(
+      tester,
+      loadCouple: (ref) {
+        final couple = ref.watch(dateContextProvider).couple;
+        return reload?.future ?? Future.value(couple);
+      },
+    );
+    reload = Completer<Couple>();
+    ProviderScope.containerOf(
+      tester.element(find.byType(StartedOnPage)),
+    ).invalidate(currentCoupleProvider);
+    await chooseDate(tester, '01/01/2019');
+    expect(couples.startedOnCalls, isEmpty);
+    reload.complete(
+      Couple(id: 'c1', partnerId: 'p', startedOn: DateTime(2020, 1, 1)),
+    );
+    await tester.pumpAndSettle();
+    expect(couples.startedOnCalls, [DateTime(2019, 1, 1)]);
+  });
 }
