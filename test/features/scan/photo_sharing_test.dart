@@ -23,10 +23,20 @@ class _SharingRepo extends PhotoSharingRepository {
         ),
       );
   final Map<PhotoDay, int> days;
+  Map<PhotoDay, int>? approved;
   @override
   Future<Result<Map<PhotoDay, int>>> approvedWithCounts(
     String coupleId,
   ) async => Ok(Map.of(days));
+  @override
+  Future<Result<void>> update(
+    String coupleId, {
+    required Map<PhotoDay, int> approve,
+    required Set<PhotoDay> revoke,
+  }) async {
+    approved = approve;
+    return const Ok(null);
+  }
 }
 
 void main() {
@@ -376,5 +386,40 @@ void main() {
       tester.widget<CheckboxListTile>(find.byType(CheckboxListTile)).value,
       false,
     );
+  });
+
+  testWidgets('고른 뒤 목록에서 빠진 날짜는 저장에서 제외하고 나머지를 저장한다', (tester) async {
+    final gone = PhotoDay(DateTime(2026, 10, 4), '32400');
+    final repo = _SharingRepo({});
+    var days = {day: 2, gone: 1};
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sessionUserIdProvider.overrideWithValue('me'),
+          photoSharingRepositoryProvider.overrideWithValue(repo),
+          photoSharingChoicesProvider.overrideWith(
+            (ref) async => PhotoSharingChoices(
+              coupleId: 'c1',
+              days: days,
+              approved: {},
+              names: const {},
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: PhotoSharingPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(CheckboxListTile).first);
+    await tester.tap(find.byType(CheckboxListTile).last);
+    days = {day: 2};
+    ProviderScope.containerOf(
+      tester.element(find.byType(PhotoSharingPage)),
+    ).invalidate(photoSharingChoicesProvider);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('비교 범위 저장'));
+    await tester.pumpAndSettle();
+    expect(repo.approved, {day: 2});
+    expect(find.text('저장 중'), findsNothing);
   });
 }

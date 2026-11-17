@@ -61,8 +61,10 @@ final savePhotoSharingProvider =
             .update(
               choices.coupleId,
               approve: {
+                // 재조회로 목록에서 빠진 날짜(사귄 날 이전 등)는 승인할 수 없다
                 for (final entry in changes.entries)
-                  if (entry.value) entry.key: choices.days[entry.key]!,
+                  if (entry.value && choices.days.containsKey(entry.key))
+                    entry.key: choices.days[entry.key]!,
               },
               revoke: {
                 for (final entry in changes.entries)
