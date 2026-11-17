@@ -9,91 +9,132 @@ import '../album/album_providers.dart';
 import '../auth/auth_state.dart';
 import 'scan_providers.dart';
 
-// 상대의 변경을 받아 관련 provider를 다시 읽는다. Realtime은 편의 기능이고 정합성의
-// 근거가 아니므로 재연결과 앱 복귀 때 전체를 다시 읽는다(설계 12장)
+// 알림은 행 정보를 담지 않는다. 구독 준비·재연결·앱 복귀 때 조회로 빠진 변경을 메운다.
 final realtimeSyncProvider = Provider<void>((ref) {
   final userId = ref.watch(sessionUserIdProvider);
-  final coupleId = ref.watch(currentCoupleProvider).value?.id;
-  if (coupleId == null) {
-    if (userId == null) return;
-    final timer = Timer.periodic(const Duration(seconds: 5), (timer) {
-      if (ref.mounted) {
-        ref.invalidate(currentCoupleProvider);
-      } else {
-        timer.cancel();
-      }
-    });
-    final lifecycle = AppLifecycleListener(
-      onResume: () => ref.invalidate(currentCoupleProvider),
-    );
-    ref.onDispose(() {
-      timer.cancel();
-      lifecycle.dispose();
-    });
-    return;
-  }
+  if (userId == null) return;
   final client = ref.watch(supabaseClientProvider);
+  String? coupleId;
+  RealtimeChannel? coupleChannel;
+  RealtimeChannel? sharesChannel;
 
-  void refreshAll() {
-    if (!ref.mounted) return;
+  bool isCurrent() =>
+      ref.mounted &&
+      client.auth.currentUser?.id == userId &&
+      ref.read(sessionUserIdProvider) == userId;
+
+  void refreshTrips() {
     ref
       ..invalidate(tripsProvider)
-      ..invalidate(overridesProvider)
-      ..invalidate(currentCoupleProvider)
-      ..invalidate(matchedDaysProvider)
-      ..invalidate(couplePhotosProvider)
-      ..invalidate(archivedCouplesProvider)
-      ..invalidate(archivedTripsProvider)
-      ..invalidate(archivedPhotosProvider);
+      ..invalidate(archivedTripsProvider);
   }
 
-  final channel = client.channel('couple:$coupleId');
-  void on(String table, String column, void Function() refresh) =>
-      channel.onPostgresChanges(
-        event: PostgresChangeEvent.all,
-        schema: 'public',
-        table: table,
-        filter: PostgresChangeFilter(
-          type: PostgresChangeFilterType.eq,
-          column: column,
-          value: coupleId,
-        ),
-        callback: (_) {
-          if (ref.mounted) refresh();
-        },
-      );
-  on('trips', 'couple_id', () => ref.invalidate(tripsProvider));
-  on('trip_regions', 'couple_id', () => ref.invalidate(tripsProvider));
-  on(
-    'couple_region_overrides',
-    'couple_id',
-    () => ref.invalidate(overridesProvider),
-  );
-  on('photos', 'couple_id', () {
+  void refreshPhotos() {
     ref
       ..invalidate(couplePhotosProvider)
       ..invalidate(archivedPhotosProvider);
-  });
-  // 사귄 날이 바뀌면 currentCoupleProvider를 거쳐 photo_days가 다시 맞춰진다(설계 5.2)
-  on('couples', 'id', () => ref.invalidate(currentCoupleProvider));
-  var subscribedOnce = false;
-  channel.subscribe((status, [_]) {
-    if (!ref.mounted || status != RealtimeSubscribeStatus.subscribed) return;
-    // 첫 구독은 이미 최신이다. 이후의 구독은 재연결이므로 놓친 변경을 메운다
-    if (subscribedOnce) refreshAll();
-    subscribedOnce = true;
-  });
+  }
 
-  // 상대의 photo_days 변경은 RLS로 받을 수 없으므로 앱 복귀 때 스캔부터 다시 한다
+  void refreshCouple() {
+    if (!isCurrent()) return;
+    refreshTrips();
+    refreshPhotos();
+    ref
+      ..invalidate(overridesProvider)
+      ..invalidate(currentCoupleProvider)
+      ..invalidate(archivedCouplesProvider);
+  }
+
+  void refreshAll() {
+    if (!isCurrent()) return;
+    refreshCouple();
+    ref.invalidate(matchedDaysProvider);
+  }
+
+  void refreshMembership() {
+    if (!isCurrent()) return;
+    ref
+      ..invalidate(currentCoupleProvider)
+      ..invalidate(archivedCouplesProvider);
+  }
+
+  void subscribe(RealtimeChannel channel, void Function() refresh) {
+    channel.subscribe((status, [_]) {
+      if (isCurrent() && status == RealtimeSubscribeStatus.subscribed) {
+        refresh();
+      }
+    });
+  }
+
+  final userChannel = client.channel(
+    'user:$userId',
+    opts: const RealtimeChannelConfig(private: true),
+  )..onBroadcast(event: 'membership', callback: (_) => refreshMembership());
+  subscribe(userChannel, refreshMembership);
+
+  // 재조회 중에는 기존 구독을 유지하고, 확인된 ID가 달라졌을 때만 교체한다.
+  ref.listen(currentCoupleProvider, (_, next) {
+    if (!isCurrent() || next.isLoading || next.hasError) return;
+    final nextId = next.value?.id;
+    if (nextId == coupleId) return;
+    coupleId = nextId;
+    if (coupleChannel != null) unawaited(client.removeChannel(coupleChannel!));
+    if (sharesChannel != null) unawaited(client.removeChannel(sharesChannel!));
+    coupleChannel = null;
+    sharesChannel = null;
+    if (nextId == null) return;
+
+    final channel = client.channel(
+      'couple:$nextId',
+      opts: const RealtimeChannelConfig(private: true),
+    );
+    coupleChannel = channel;
+    void on(String event, void Function() refresh) => channel.onBroadcast(
+      event: event,
+      callback: (_) {
+        if (isCurrent() && coupleId == nextId) refresh();
+      },
+    );
+    on('trips', refreshTrips);
+    on('overrides', () => ref.invalidate(overridesProvider));
+    on('photos', refreshPhotos);
+    on('couple', () {
+      ref
+        ..invalidate(currentCoupleProvider)
+        ..invalidate(archivedCouplesProvider);
+    });
+    subscribe(channel, () {
+      if (coupleId == nextId) refreshCouple();
+    });
+    final shares =
+        client.channel(
+          'couple-shares:$nextId',
+          opts: const RealtimeChannelConfig(private: true),
+        )..onBroadcast(
+          event: 'shares',
+          callback: (_) {
+            if (isCurrent() && coupleId == nextId) {
+              ref.invalidate(matchedDaysProvider);
+            }
+          },
+        );
+    sharesChannel = shares;
+    subscribe(shares, () {
+      if (coupleId == nextId) ref.invalidate(matchedDaysProvider);
+    });
+  }, fireImmediately: true);
+
   final lifecycle = AppLifecycleListener(
     onResume: () {
-      if (!ref.mounted) return;
+      if (!isCurrent()) return;
       ref.invalidate(scanSnapshotProvider);
       refreshAll();
     },
   );
   ref.onDispose(() {
     lifecycle.dispose();
-    client.removeChannel(channel);
+    unawaited(client.removeChannel(userChannel));
+    if (coupleChannel != null) unawaited(client.removeChannel(coupleChannel!));
+    if (sharesChannel != null) unawaited(client.removeChannel(sharesChannel!));
   });
 });
