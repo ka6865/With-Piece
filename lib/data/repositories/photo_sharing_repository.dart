@@ -9,12 +9,6 @@ class PhotoSharingRepository {
   const PhotoSharingRepository(this._client);
   final SupabaseClient _client;
 
-  Future<Result<Set<PhotoDay>>> approved(String coupleId) async =>
-      switch (await approvedWithCounts(coupleId)) {
-        Ok(:final value) => Ok(value.keys.toSet()),
-        Err(:final error) => Err(error),
-      };
-
   Future<Result<Map<PhotoDay, int>>> approvedWithCounts(String coupleId) =>
       guard(() async {
         final rows = await fetchAll(
@@ -32,17 +26,21 @@ class PhotoSharingRepository {
         };
       });
 
+  // 승인은 이 기기의 장수를 함께 보내 다른 기기 동기화로 빠진 원본도 되살린다.
   Future<Result<void>> update(
     String coupleId, {
-    required Set<PhotoDay> approve,
+    required Map<PhotoDay, int> approve,
     required Set<PhotoDay> revoke,
   }) => guard(
     () => _client.rpc(
       'update_photo_day_shares',
       params: {
         'p_couple_id': coupleId,
-        'p_approve': _rows(approve),
-        'p_revoke': _rows(revoke),
+        'p_approve': [
+          for (final MapEntry(key: day, value: count) in approve.entries)
+            {..._row(day), 'photo_count': count},
+        ],
+        'p_revoke': [for (final day in revoke) _row(day)],
       },
     ),
   );
@@ -51,19 +49,8 @@ class PhotoSharingRepository {
     DateTime.parse(row['day'] as String),
     row['region_id'] as String,
   );
-  static List<Map<String, String>> _rows(Set<PhotoDay> days) => [
-    for (final day in days)
-      {
-        'day': day.day.toIso8601String().substring(0, 10),
-        'region_id': day.regionId,
-      },
-  ];
-
-  Future<Result<void>> replace(String coupleId, Set<PhotoDay> days) =>
-      guard(() async {
-        await _client.rpc(
-          'replace_photo_day_shares',
-          params: {'p_couple_id': coupleId, 'p_rows': _rows(days)},
-        );
-      });
+  static Map<String, Object> _row(PhotoDay day) => {
+    'day': day.day.toIso8601String().substring(0, 10),
+    'region_id': day.regionId,
+  };
 }

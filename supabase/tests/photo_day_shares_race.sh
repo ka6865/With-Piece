@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 같은 계정에서 두 승인 저장이 겹쳐도 두 번째 목록으로 교체되는지 확인한다.
+# 같은 계정에서 두 승인 저장이 겹쳐도 두 번째 변경이 첫 번째 결과 위에 반영되는지 확인한다.
 set -euo pipefail
 
 db=(psql -X -qAt -v ON_ERROR_STOP=1 postgresql://postgres:postgres@127.0.0.1:54322/postgres)
@@ -38,12 +38,12 @@ save_sql() {
 begin;
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"$owner","role":"authenticated"}', true) \g /dev/null
-select public.replace_photo_day_shares('$couple', '[{"day":"2026-01-02","region_id":"$1"}]');
+select public.update_photo_day_shares('$couple', '[{"day":"2026-01-02","region_id":"$1","photo_count":1}]', '$2');
 SQL
 }
 
 {
-  save_sql 32060
+  save_sql 32060 '[{"day":"2026-01-02","region_id":"11010"}]'
   echo "\! touch '$scratch/ready'; for i in \$(seq 1 200); do test -e '$scratch/commit' && break; sleep 0.05; done"
   echo 'commit;'
 } | "${db[@]}" >/dev/null &
@@ -54,7 +54,7 @@ for i in $(seq 1 200); do
 done
 [[ -e "$scratch/ready" ]]
 
-{ save_sql 32400; echo 'commit;'; } | PGAPPNAME="$second_app" "${db[@]}" >/dev/null &
+{ save_sql 32400 '[{"day":"2026-01-02","region_id":"11010"},{"day":"2026-01-02","region_id":"32060"}]'; echo 'commit;'; } | PGAPPNAME="$second_app" "${db[@]}" >/dev/null &
 second=$!
 blocked=f
 for i in $(seq 1 100); do

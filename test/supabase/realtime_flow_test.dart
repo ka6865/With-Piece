@@ -173,13 +173,15 @@ Future<void> main() async {
     await _joined(a, 'couple-shares:$id');
     final day = PhotoDay(DateTime(2026, 10, 3), '32060');
     for (final client in [a, b]) {
-      (await PhotoDayRepository(client).replaceAll({day: 1})).valueOrThrow;
+      (await PhotoDayRepository(client).sync(id, {day: 1})).valueOrThrow;
     }
-    (await PhotoSharingRepository(a).replace(id, {day})).valueOrThrow;
+    (await PhotoSharingRepository(
+      a,
+    ).update(id, approve: {day: 1}, revoke: {})).valueOrThrow;
     expect(await container.read(matchedDaysProvider.future), isEmpty);
     (await PhotoSharingRepository(
       b,
-    ).update(id, approve: {day}, revoke: {})).valueOrThrow;
+    ).update(id, approve: {day: 1}, revoke: {})).valueOrThrow;
     await _until(
       () async =>
           (await container.read(matchedDaysProvider.future)).length == 1,
@@ -194,13 +196,13 @@ Future<void> main() async {
     );
     (await PhotoSharingRepository(
       b,
-    ).update(id, approve: {day}, revoke: {})).valueOrThrow;
+    ).update(id, approve: {day: 1}, revoke: {})).valueOrThrow;
     await _until(
       () async =>
           (await container.read(matchedDaysProvider.future)).length == 1,
       '상대 재승인으로 교집합이 갱신되지 않았어요',
     );
-    (await PhotoDayRepository(b).replaceAll({})).valueOrThrow;
+    await b.from('photo_days').delete().eq('user_id', b.auth.currentUser!.id);
     await _until(
       () async => (await container.read(matchedDaysProvider.future)).isEmpty,
       '원본 삭제의 승인 연쇄 삭제를 읽지 못했어요',
@@ -303,8 +305,10 @@ Future<void> main() async {
     }
     expect(publicMessages, isEmpty);
     final day = PhotoDay(DateTime(2026, 10, 3), '32060');
-    (await PhotoDayRepository(a).replaceAll({day: 1})).valueOrThrow;
-    (await PhotoSharingRepository(a).replace(id, {day})).valueOrThrow;
+    (await PhotoDayRepository(a).sync(id, {day: 1})).valueOrThrow;
+    (await PhotoSharingRepository(
+      a,
+    ).update(id, approve: {day: 1}, revoke: {})).valueOrThrow;
     await _until(
       () => messages.any((m) => m['event'] == 'shares'),
       '승인 알림 미수신',
@@ -316,7 +320,7 @@ Future<void> main() async {
     );
     messages.clear();
     // 가입 시 캐시된 권한이 남아 있어도 원본 연쇄 삭제는 빈 무효화 알림뿐이다.
-    (await PhotoDayRepository(a).replaceAll({})).valueOrThrow;
+    await a.from('photo_days').delete().eq('user_id', a.auth.currentUser!.id);
     await _until(
       () => messages.any((m) => m['event'] == 'shares'),
       '기존 승인 채널의 연쇄 삭제 알림 미수신',

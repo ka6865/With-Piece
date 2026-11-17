@@ -45,7 +45,7 @@ Future<void> main() async {
     );
     expect(await scan(deviceA, {dayA: 7}, 1), isA<Ok<void>>());
     expect(
-      await shares.update(cid, approve: {dayA}, revoke: {}),
+      await shares.update(cid, approve: {dayA: 7}, revoke: {}),
       isA<Ok<void>>(),
     );
     expect(await scan(deviceB, {dayB: 2}, 2), isA<Ok<void>>());
@@ -53,14 +53,14 @@ Future<void> main() async {
     expect((await repo.mine()).valueOrThrow, {dayA: 7, dayB: 2});
     // 기기 A의 화면을 연 뒤 기기 B가 새 기록을 승인한다.
     expect(
-      await shares.update(cid, approve: {dayB}, revoke: {}),
+      await shares.update(cid, approve: {dayB: 2}, revoke: {}),
       isA<Ok<void>>(),
     );
     expect(
       await shares.update(cid, approve: {}, revoke: {dayA}),
       isA<Ok<void>>(),
     );
-    expect((await shares.approved(cid)).valueOrThrow, {dayB});
+    expect((await shares.approvedWithCounts(cid)).valueOrThrow, {dayB: 2});
     expect(await scan(deviceA, {}, 3), isA<Ok<void>>());
     expect((await repo.mine()).valueOrThrow, {dayB: 2});
   }, skip: skip);
@@ -88,11 +88,12 @@ Future<void> main() async {
             ),
       ),
     );
-    final day = PhotoDay(DateTime(2026, 10, 3), '32060');
-    expect(
-      await PhotoDayRepository(client).replaceAll({day: 4}),
-      isA<Ok<void>>(),
-    );
+    await client.from('photo_days').insert({
+      'user_id': client.auth.currentUser!.id,
+      'day': '2026-10-03',
+      'region_id': '32060',
+      'photo_count': 4,
+    });
     final offsets = <int>[];
     final all = await fetchAll<Map<String, dynamic>>((from, to) {
       offsets.add(from);
@@ -111,23 +112,29 @@ Future<void> main() async {
     final cid = (await ca.current()).valueOrThrow!.id;
     final day = PhotoDay(DateTime(2026, 10, 3), '32060');
     final secret = PhotoDay(DateTime(2026, 10, 4), '32400');
-    await PhotoDayRepository(a).replaceAll({day: 1, secret: 1});
-    await PhotoDayRepository(b).replaceAll({day: 1, secret: 1});
+    await PhotoDayRepository(a).sync(cid, {day: 1, secret: 1});
+    await PhotoDayRepository(b).sync(cid, {day: 1, secret: 1});
     final sa = PhotoSharingRepository(a);
     final sb = PhotoSharingRepository(b);
     expect((await TripRepository(b).matchedDays()).valueOrThrow, isEmpty);
-    expect(await sa.replace(cid, {day}), isA<Ok<void>>());
-    expect((await sa.approved(cid)).valueOrThrow, {day});
-    expect((await sb.approved(cid)).valueOrThrow, isEmpty);
-    await sb.replace(cid, {day, secret});
+    expect(
+      await sa.update(cid, approve: {day: 1}, revoke: {}),
+      isA<Ok<void>>(),
+    );
+    expect((await sa.approvedWithCounts(cid)).valueOrThrow, {day: 1});
+    expect((await sb.approvedWithCounts(cid)).valueOrThrow, isEmpty);
+    await sb.update(cid, approve: {day: 1, secret: 1}, revoke: {});
     expect((await TripRepository(b).matchedDays()).valueOrThrow, [day]);
-    await sa.replace(cid, {});
+    await sa.update(cid, approve: {}, revoke: {day});
     expect((await TripRepository(b).matchedDays()).valueOrThrow, isEmpty);
     await ca.archive();
     final c = await signUpLocal();
     await CoupleRepository(c).join((await ca.createInvite()).valueOrThrow.code);
     final newId = (await ca.current()).valueOrThrow!.id;
-    expect(await sa.replace(cid, {day}), isA<Err<void>>());
-    expect((await sa.approved(newId)).valueOrThrow, isEmpty);
+    expect(
+      await sa.update(cid, approve: {day: 1}, revoke: {}),
+      isA<Err<void>>(),
+    );
+    expect((await sa.approvedWithCounts(newId)).valueOrThrow, isEmpty);
   }, skip: skip);
 }

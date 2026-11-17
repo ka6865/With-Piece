@@ -52,15 +52,17 @@ final photoSharingChoicesProvider = FutureProvider<PhotoSharingChoices>((
 });
 
 final savePhotoSharingProvider =
-    Provider<Future<Result<void>> Function(String, Map<PhotoDay, bool>)>(
-      (ref) => (coupleId, changes) async {
+    Provider<
+      Future<Result<void>> Function(PhotoSharingChoices, Map<PhotoDay, bool>)
+    >(
+      (ref) => (choices, changes) async {
         final result = await ref
             .read(photoSharingRepositoryProvider)
             .update(
-              coupleId,
+              choices.coupleId,
               approve: {
                 for (final entry in changes.entries)
-                  if (entry.value) entry.key,
+                  if (entry.value) entry.key: choices.days[entry.key]!,
               },
               revoke: {
                 for (final entry in changes.entries)
@@ -185,7 +187,7 @@ class _PhotoSharingPageState extends ConsumerState<PhotoSharingPage> {
                           });
                           final result = await ref.read(
                             savePhotoSharingProvider,
-                          )(data.coupleId, Map.of(_changes));
+                          )(data, Map.of(_changes));
                           if (!context.mounted ||
                               _userId != userId ||
                               _coupleId != data.coupleId) {

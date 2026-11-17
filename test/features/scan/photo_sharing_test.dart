@@ -45,7 +45,7 @@ void main() {
               names: {'32060': '속초시'},
             ),
           ),
-          savePhotoSharingProvider.overrideWithValue((coupleId, days) async {
+          savePhotoSharingProvider.overrideWithValue((choices, days) async {
             saved = days;
             return const Ok(null);
           }),
@@ -79,7 +79,7 @@ void main() {
               names: {},
             ),
           ),
-          savePhotoSharingProvider.overrideWithValue((coupleId, days) async {
+          savePhotoSharingProvider.overrideWithValue((choices, days) async {
             saved = days;
             return const Ok(null);
           }),
@@ -142,7 +142,7 @@ void main() {
               ),
             ),
             savePhotoSharingProvider.overrideWithValue(
-              (coupleId, changes) => response.future,
+              (choices, changes) => response.future,
             ),
           ],
           child: const MaterialApp(home: PhotoSharingPage()),
@@ -184,7 +184,7 @@ void main() {
             ),
           ),
           savePhotoSharingProvider.overrideWithValue(
-            (coupleId, changes) => response.future,
+            (choices, changes) => response.future,
           ),
         ],
         child: const MaterialApp(home: PhotoSharingPage()),
@@ -250,8 +250,8 @@ void main() {
               names: {'32060': '속초시'},
             ),
           ),
-          savePhotoSharingProvider.overrideWithValue((coupleId, days) async {
-            expect(coupleId, 'c1');
+          savePhotoSharingProvider.overrideWithValue((choices, days) async {
+            expect(choices.coupleId, 'c1');
             calls++;
             return calls == 1 ? const Err(AppError.network) : const Ok(null);
           }),
