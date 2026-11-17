@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/media/heic_encoder.dart';
 import '../../core/result/result.dart';
 import '../../core/uuid.dart';
+import 'fetch_all.dart';
 
 class PhotoRecord {
   const PhotoRecord({
@@ -174,12 +175,7 @@ class PhotoRepository {
         .eq('couple_id', coupleId)
         .order('taken_at')
         .order('id');
-    final rows = <Map<String, dynamic>>[];
-    for (var offset = 0; ; offset += 1000) {
-      final page = await query.range(offset, offset + 999);
-      rows.addAll(page);
-      if (page.length < 1000) break;
-    }
+    final rows = await fetchAll((from, to) => query.range(from, to));
     return [
       for (final row in rows)
         PhotoRecord(

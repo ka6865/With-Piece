@@ -4,6 +4,7 @@ import '../../core/result/result.dart';
 import '../../features/scan/home_regions.dart';
 import '../../features/scan/photo_days.dart';
 import '../../features/scan/trip_candidates.dart';
+import 'fetch_all.dart';
 
 enum TripStatus { confirmed, dismissed }
 
@@ -36,14 +37,11 @@ class TripRepository {
   final SupabaseClient _client;
 
   Future<Result<List<PhotoDay>>> matchedDays() => guard(() async {
-    final rows = <Map<String, dynamic>>[];
-    for (var offset = 0; ; offset += 1000) {
+    final rows = await fetchAll<Map<String, dynamic>>((from, to) async {
       final page =
-          await _client.rpc('couple_matched_days').range(offset, offset + 999)
-              as List;
-      rows.addAll(page.cast<Map<String, dynamic>>());
-      if (page.length < 1000) break;
-    }
+          await _client.rpc('couple_matched_days').range(from, to) as List;
+      return page.cast<Map<String, dynamic>>();
+    });
     return [
       for (final row in rows)
         PhotoDay(
@@ -64,12 +62,7 @@ class TripRepository {
         .eq('couple_id', coupleId)
         .order('started_on', ascending: false)
         .order('id', ascending: false);
-    final rows = <Map<String, dynamic>>[];
-    for (var offset = 0; ; offset += 1000) {
-      final page = await query.range(offset, offset + 999);
-      rows.addAll(page);
-      if (page.length < 1000) break;
-    }
+    final rows = await fetchAll((from, to) => query.range(from, to));
     return [
       for (final row in rows)
         Trip(
