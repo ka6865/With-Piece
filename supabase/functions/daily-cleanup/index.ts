@@ -23,27 +23,53 @@ Deno.serve(async (req) => {
     }
   };
 
-  const purged = await supabase.rpc("purge_expired_users");
-  if (purged.error) throw purged.error;
-  for (const row of purged.data as { user_id: string; object_paths: string[] }[]) {
-    await removeAll(row.object_paths);
-    const { error: finalizeError } = await supabase.rpc("finalize_expired_user", {
-      p_user_id: row.user_id,
-    });
-    if (finalizeError) throw finalizeError;
-    const { error } = await supabase.auth.admin.deleteUser(row.user_id);
-    if (error) throw error;
+  let expiredSucceeded = 0;
+  let expiredFailed = 0;
+  const failedPhases: string[] = [];
+  let orphanFiles = 0;
+  try {
+    const purged = await supabase.rpc("purge_expired_users");
+    if (purged.error) throw purged.error;
+    for (const row of purged.data as { user_id: string; object_paths: string[] }[]) {
+      try {
+        await removeAll(row.object_paths);
+        const { error: finalizeError } = await supabase.rpc("finalize_expired_user", {
+          p_user_id: row.user_id,
+        });
+        if (finalizeError) throw finalizeError;
+        const { error } = await supabase.auth.admin.deleteUser(row.user_id);
+        if (error) throw error;
+        expiredSucceeded++;
+      } catch {
+        expiredFailed++;
+      }
+    }
+  } catch {
+    failedPhases.push("expired_accounts");
   }
 
-  const orphans = await supabase.rpc("orphan_photo_paths");
-  if (orphans.error) throw orphans.error;
-  await removeAll(orphans.data as string[]);
+  try {
+    const orphans = await supabase.rpc("orphan_photo_paths");
+    if (orphans.error) throw orphans.error;
+    orphanFiles = orphans.data.length;
+    await removeAll(orphans.data as string[]);
+  } catch {
+    failedPhases.push("orphan_cleanup");
+  }
 
-  const stale = await supabase.rpc("cleanup_stale");
-  if (stale.error) throw stale.error;
+  try {
+    const stale = await supabase.rpc("cleanup_stale");
+    if (stale.error) throw stale.error;
+  } catch {
+    failedPhases.push("stale_cleanup");
+  }
 
-  return Response.json({
-    purgedUsers: purged.data.length,
-    orphanFiles: orphans.data.length,
-  });
+  if (expiredFailed || failedPhases.length) {
+    return Response.json({
+      error: "cleanup_failed",
+      expiredAccounts: { succeeded: expiredSucceeded, failed: expiredFailed },
+      failedPhases,
+    }, { status: 500 });
+  }
+  return Response.json({ purgedUsers: expiredSucceeded, orphanFiles });
 });
