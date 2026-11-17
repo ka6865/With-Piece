@@ -25,11 +25,21 @@ Future<void> main() async {
       goseong: 1,
     }, DateTime(2026, 11, 1));
 
-    await sync.sync(snapshot, DateTime(2026, 1, 1));
+    await sync.sync(
+      snapshot,
+      DateTime(2026, 1, 1),
+      userId: 'local',
+      coupleId: 'local',
+    );
     expect((await repo.mine()).valueOrThrow, {sokcho: 2, goseong: 1});
 
     // 사귄 날을 앞당기면 그 사이 날짜가 올라간다
-    await sync.sync(snapshot, DateTime(2025, 1, 1));
+    await sync.sync(
+      snapshot,
+      DateTime(2025, 1, 1),
+      userId: 'local',
+      coupleId: 'local',
+    );
     expect((await repo.mine()).valueOrThrow, {
       before: 1,
       sokcho: 2,
@@ -37,7 +47,12 @@ Future<void> main() async {
     });
 
     // 늦추면 기준 이전 행이 지워진다
-    await sync.sync(snapshot, DateTime(2026, 10, 4));
+    await sync.sync(
+      snapshot,
+      DateTime(2026, 10, 4),
+      userId: 'local',
+      coupleId: 'local',
+    );
     expect((await repo.mine()).valueOrThrow, {goseong: 1});
   }, skip: skip);
 
@@ -48,10 +63,14 @@ Future<void> main() async {
     await sync.sync(
       ScanSnapshot({sokcho: 2, goseong: 1}, DateTime(2026, 11, 1)),
       DateTime(2026, 1, 1),
+      userId: 'local',
+      coupleId: 'local',
     );
     await sync.sync(
       ScanSnapshot({goseong: 3}, DateTime(2026, 11, 2)),
       DateTime(2026, 1, 1),
+      userId: 'local',
+      coupleId: 'local',
     );
     expect((await repo.mine()).valueOrThrow, {goseong: 3});
   }, skip: skip);

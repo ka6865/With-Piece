@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:woori_piece/core/result/result.dart';
 import 'package:woori_piece/data/repositories/couple_repository.dart';
 import 'package:woori_piece/data/repositories/photo_day_repository.dart';
+import 'package:woori_piece/data/repositories/photo_sharing_repository.dart';
 import 'package:woori_piece/data/repositories/trip_repository.dart';
 import 'package:woori_piece/features/scan/home_regions.dart';
 import 'package:woori_piece/features/scan/photo_days.dart';
@@ -28,6 +29,9 @@ Future<void> main() async {
     ).replaceAll({sokcho: 3, PhotoDay(DateTime(2026, 10, 4), '32400'): 1});
     await PhotoDayRepository(b).replaceAll({sokcho: 1});
 
+    expect((await TripRepository(a).matchedDays()).valueOrThrow, isEmpty);
+    await PhotoSharingRepository(a).replace(coupleId, {sokcho});
+    await PhotoSharingRepository(b).replace(coupleId, {sokcho});
     final trips = TripRepository(a);
     expect((await trips.matchedDays()).valueOrThrow, [sokcho]);
 

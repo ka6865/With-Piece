@@ -19,13 +19,15 @@ class PhotoGrid extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (photos.isEmpty) {
+    final userId = ref.watch(currentUserIdProvider);
+    if (userId == null || photos.isEmpty) {
       return const Padding(
         padding: EdgeInsets.all(24),
         child: Center(child: Text('아직 올린 사진이 없어요')),
       );
     }
     return FutureBuilder<Map<String, String>>(
+      key: ValueKey(userId),
       future: ref.watch(signedUrlCacheProvider).urls([
         for (final p in photos) p.thumbPath,
       ]),
@@ -40,7 +42,7 @@ class PhotoGrid extends ConsumerWidget {
             GestureDetector(
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute<void>(
-                  builder: (_) => _FullPhotoPage(photo: photo),
+                  builder: (_) => _FullPhotoPage(photo: photo, userId: userId),
                 ),
               ),
               onLongPress: onLongPress == null
@@ -79,27 +81,37 @@ class RemoteImage extends StatelessWidget {
 }
 
 class _FullPhotoPage extends ConsumerWidget {
-  const _FullPhotoPage({required this.photo});
+  const _FullPhotoPage({required this.photo, required this.userId});
 
   final PhotoRecord photo;
+  final String userId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) => Scaffold(
-    backgroundColor: Colors.black,
-    appBar: AppBar(
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (ref.watch(currentUserIdProvider) != userId) {
+      return const Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(child: Text('계정이 바뀌어 사진을 닫았어요')),
+      );
+    }
+    return Scaffold(
       backgroundColor: Colors.black,
-      foregroundColor: Colors.white,
-    ),
-    body: Center(
-      child: FutureBuilder<Map<String, String>>(
-        future: ref.watch(signedUrlCacheProvider).urls([photo.fullPath]),
-        builder: (context, snapshot) => InteractiveViewer(
-          child: RemoteImage(
-            url: snapshot.data?[photo.fullPath],
-            fit: BoxFit.contain,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+      ),
+      body: Center(
+        child: FutureBuilder<Map<String, String>>(
+          key: ValueKey(userId),
+          future: ref.watch(signedUrlCacheProvider).urls([photo.fullPath]),
+          builder: (context, snapshot) => InteractiveViewer(
+            child: RemoteImage(
+              url: snapshot.data?[photo.fullPath],
+              fit: BoxFit.contain,
+            ),
           ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }

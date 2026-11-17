@@ -18,9 +18,11 @@ class NationalMapPage extends ConsumerWidget {
     final regions = ref.watch(regionMapAssetProvider);
     ref.watch(realtimeSyncProvider);
     // 진행 데이터가 없거나 오류여도 지도는 그린다(설계 12장)
+    final trips = ref.watch(tripsProvider);
+    final home = ref.watch(homeRegionIdsProvider);
     final filled = filledRegionIds(
-      ref.watch(tripsProvider).value ?? const [],
-      ref.watch(homeRegionIdsProvider).value ?? const {},
+      trips.isLoading || trips.hasError ? const [] : trips.value ?? const [],
+      home.isLoading || home.hasError ? const {} : home.value ?? const {},
     );
     return Scaffold(
       appBar: AppBar(

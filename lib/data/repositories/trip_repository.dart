@@ -36,9 +36,16 @@ class TripRepository {
   final SupabaseClient _client;
 
   Future<Result<List<PhotoDay>>> matchedDays() => guard(() async {
-    final rows = await _client.rpc('couple_matched_days') as List;
+    final rows = <Map<String, dynamic>>[];
+    for (var offset = 0; ; offset += 1000) {
+      final page =
+          await _client.rpc('couple_matched_days').range(offset, offset + 999)
+              as List;
+      rows.addAll(page.cast<Map<String, dynamic>>());
+      if (page.length < 1000) break;
+    }
     return [
-      for (final row in rows.cast<Map<String, dynamic>>())
+      for (final row in rows)
         PhotoDay(
           DateTime.parse(row['day'] as String),
           row['region_id'] as String,
@@ -48,14 +55,21 @@ class TripRepository {
 
   // RLS는 아카이브된 이전 커플도 읽게 열어 두므로 현재 커플로 거른다(설계 14장)
   Future<Result<List<Trip>>> trips(String coupleId) => guard(() async {
-    final rows = await _client
+    final query = _client
         .from('trips')
         .select(
           'id, title, started_on, ended_on, status, source, cover_photo_id, '
           'trip_regions(region_id, created_at)',
         )
         .eq('couple_id', coupleId)
-        .order('started_on', ascending: false);
+        .order('started_on', ascending: false)
+        .order('id', ascending: false);
+    final rows = <Map<String, dynamic>>[];
+    for (var offset = 0; ; offset += 1000) {
+      final page = await query.range(offset, offset + 999);
+      rows.addAll(page);
+      if (page.length < 1000) break;
+    }
     return [
       for (final row in rows)
         Trip(

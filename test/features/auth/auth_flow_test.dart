@@ -7,6 +7,9 @@ import 'package:woori_piece/app/app.dart';
 import 'package:woori_piece/app/router.dart';
 import 'package:woori_piece/data/repositories/repository_providers.dart';
 import 'package:woori_piece/features/auth/auth_state.dart';
+import 'package:woori_piece/data/repositories/couple_repository.dart';
+import 'package:woori_piece/features/scan/realtime_sync.dart';
+import 'package:woori_piece/core/supabase/supabase_providers.dart';
 import 'package:woori_piece/map_data/map_asset.dart';
 import 'package:woori_piece/map_data/map_asset_loader.dart';
 
@@ -36,16 +39,27 @@ Future<ProviderContainer> pumpApp(
   required AppStage stage,
   String location = '/',
   FakeAuthRepository? auth,
+  FakeCoupleRepository? coupleRepository,
+  Couple? couple,
+  void Function()? onRealtimeStart,
 }) async {
   final controller = NotifierProvider<StageController, AppStage>(
     () => StageController(stage),
   );
   final container = ProviderContainer(
     overrides: [
+      sessionUserIdProvider.overrideWithValue('me'),
       appStageProvider.overrideWith((ref) => ref.watch(controller)),
+      sessionProvider.overrideWith((ref) => Stream.value(null)),
+      currentCoupleProvider.overrideWith((ref) async => couple),
+      realtimeSyncProvider.overrideWith((ref) {
+        onRealtimeStart?.call();
+      }),
       initialLocationProvider.overrideWithValue(location),
       authRepositoryProvider.overrideWithValue(auth ?? FakeAuthRepository()),
-      coupleRepositoryProvider.overrideWithValue(FakeCoupleRepository()),
+      coupleRepositoryProvider.overrideWithValue(
+        coupleRepository ?? FakeCoupleRepository(),
+      ),
       provinceMapAssetProvider.overrideWith((ref) => provinces),
       regionMapAssetProvider.overrideWith((ref) => regions),
     ],
@@ -73,6 +87,50 @@ void main() {
   testWidgets('커플이 없으면 초대 화면', (tester) async {
     await pumpApp(tester, stage: AppStage.needsCouple);
     expect(find.text('연인과 연결하기'), findsOneWidget);
+    expect(find.text('계정 설정'), findsOneWidget);
+    expect(find.text('지난 기록'), findsOneWidget);
+  });
+
+  testWidgets('커플 연결 전에도 계정 설정으로 이동할 수 있다', (tester) async {
+    await pumpApp(tester, stage: AppStage.needsCouple);
+    await tester.tap(find.text('계정 설정'));
+    await tester.pumpAndSettle();
+    expect(find.text('계정 연결'), findsOneWidget);
+    expect(find.text('전체 다시 스캔'), findsOneWidget);
+  });
+
+  testWidgets('설정의 사귄 날 수정 경로에서 고른 날짜를 저장한다', (tester) async {
+    final couples = FakeCoupleRepository();
+    await pumpApp(
+      tester,
+      stage: AppStage.ready,
+      location: '/settings/accounts',
+      coupleRepository: couples,
+      couple: Couple(
+        id: 'couple-1',
+        partnerId: 'partner-1',
+        startedOn: DateTime(2020, 1, 1),
+      ),
+    );
+    await tester.tap(find.text('사귄 날 수정'));
+    await tester.pumpAndSettle();
+    expect(find.text('사귄 날 수정'), findsOneWidget);
+    expect(find.text('날짜 바꾸기'), findsOneWidget);
+    await tester.tap(find.text('날짜 바꾸기'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+    expect(couples.startedOnCalls, [DateTime(2020, 1, 1)]);
+  });
+
+  testWidgets('세션이 없어도 앱이 전역 실시간 갱신 provider를 watch한다', (tester) async {
+    var started = false;
+    await pumpApp(
+      tester,
+      stage: AppStage.signedOut,
+      onRealtimeStart: () => started = true,
+    );
+    expect(started, isTrue);
   });
 
   testWidgets('사귄 날이 없으면 사귄 날 화면', (tester) async {

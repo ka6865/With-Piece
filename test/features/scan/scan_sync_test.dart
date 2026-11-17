@@ -27,10 +27,41 @@ void main() {
     final snapshot = ScanSnapshot({
       PhotoDay(DateTime(2026, 10, 3), '32060'): 1,
     }, DateTime(2026, 11, 1));
-    await sync.sync(snapshot, DateTime(2026, 1, 1));
-    await sync.sync(snapshot, DateTime(2026, 1, 1));
+    await sync.sync(
+      snapshot,
+      DateTime(2026, 1, 1),
+      userId: 'a',
+      coupleId: 'c1',
+    );
+    await sync.sync(
+      snapshot,
+      DateTime(2026, 1, 1),
+      userId: 'a',
+      coupleId: 'c1',
+    );
     expect(repo.calls, hasLength(1));
-    await sync.sync(snapshot, DateTime(2025, 1, 1));
+    await sync.sync(
+      snapshot,
+      DateTime(2025, 1, 1),
+      userId: 'a',
+      coupleId: 'c1',
+    );
     expect(repo.calls, hasLength(2));
+  });
+  test('계정과 커플이 바뀌거나 삭제 후 무효화하면 같은 스캔도 다시 올린다', () async {
+    SharedPreferences.setMockInitialValues({});
+    final repo = CountingRepo();
+    final sync = ScanSync(repo, await SharedPreferences.getInstance());
+    final snapshot = ScanSnapshot({
+      PhotoDay(DateTime(2026, 10, 3), '32060'): 1,
+    }, DateTime(2026, 11, 1));
+    final started = DateTime(2026, 1, 1);
+    await sync.sync(snapshot, started, userId: 'a', coupleId: 'c1');
+    await sync.sync(snapshot, started, userId: 'b', coupleId: 'c1');
+    await sync.sync(snapshot, started, userId: 'b', coupleId: 'c2');
+    expect(repo.calls, hasLength(3));
+    await sync.clearForUser('b');
+    await sync.sync(snapshot, started, userId: 'b', coupleId: 'c2');
+    expect(repo.calls, hasLength(4));
   });
 }

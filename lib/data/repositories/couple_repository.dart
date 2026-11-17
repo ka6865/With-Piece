@@ -40,6 +40,7 @@ enum JoinOutcome {
   self,
   alreadyCoupled,
   rateLimited,
+  deletionPending,
 }
 
 // 커플 관계는 RPC로만 바뀐다(설계 9.3). 테이블에는 읽기만 한다
@@ -55,6 +56,7 @@ class CoupleRepository {
     'self': JoinOutcome.self,
     'already_coupled': JoinOutcome.alreadyCoupled,
     'rate_limited': JoinOutcome.rateLimited,
+    'deletion_pending': JoinOutcome.deletionPending,
   };
 
   Future<Result<Invite>> createInvite() => guard(() async {

@@ -31,7 +31,25 @@ class TripDiscoveryBanner extends ConsumerWidget {
         onPressed: PhotoManager.openSetting,
       );
     }
-    return const SizedBox.shrink();
+    if (found == null) return const SizedBox.shrink();
+    return Row(
+      children: [
+        Expanded(
+          child: _Banner(
+            message: '비교할 기록을 골라 함께 간 곳을 찾아보세요',
+            action: '기록 선택',
+            onPressed: () => context.push('/settings/photo-sharing'),
+          ),
+        ),
+        IconButton(
+          tooltip: '함께 간 기록 새로 확인',
+          icon: const Icon(Icons.refresh),
+          onPressed: () => ref
+            ..invalidate(matchedDaysProvider)
+            ..invalidate(tripCandidatesProvider),
+        ),
+      ],
+    );
   }
 }
 

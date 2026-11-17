@@ -5,6 +5,7 @@ import '../../core/result/result.dart';
 import '../../data/repositories/repository_providers.dart';
 import '../../data/repositories/trip_repository.dart';
 import '../../map_data/geo_region_locator.dart';
+import '../../core/supabase/supabase_providers.dart';
 import '../../map_data/map_asset_loader.dart';
 import '../auth/auth_state.dart';
 import 'home_regions.dart';
@@ -44,10 +45,15 @@ final scanSyncProvider = Provider<ScanSync>(
 
 // 사귄 날이 바뀌면(상대가 바꿔도) currentCoupleProvider가 다시 읽혀 다시 맞춘다
 final photoDaysSyncedProvider = FutureProvider<void>((ref) async {
+  final couple = await ref.watch(currentCoupleProvider.future);
+  final userId = ref.watch(sessionProvider).value?.user.id;
+  final startedOn = couple?.startedOn;
+  if (couple == null || startedOn == null || userId == null) return;
   final snapshot = await ref.watch(scanSnapshotProvider.future);
-  final startedOn = (await ref.watch(currentCoupleProvider.future))?.startedOn;
-  if (startedOn == null) return;
-  (await ref.watch(scanSyncProvider).sync(snapshot, startedOn)).valueOrThrow;
+  (await ref
+          .watch(scanSyncProvider)
+          .sync(snapshot, startedOn, userId: userId, coupleId: couple.id))
+      .valueOrThrow;
 });
 
 final matchedDaysProvider = FutureProvider<List<PhotoDay>>((ref) async {

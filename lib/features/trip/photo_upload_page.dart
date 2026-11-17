@@ -88,6 +88,7 @@ class _PhotoUploadPageState extends ConsumerState<PhotoUploadPage> {
   // 사진첩에서 더 고른 사진. 촬영 날짜가 여행 기간과 달라 기간 목록에 없는 사진이다
   final _extra = <LocalPhoto>[];
   int? _done;
+  var _hasFailures = false;
 
   Future<void> _pickMore() async {
     final picked = await ref.read(libraryPickerProvider)(context);
@@ -107,31 +108,42 @@ class _PhotoUploadPageState extends ConsumerState<PhotoUploadPage> {
     ];
     final repo = ref.read(photoRepositoryProvider);
     final readOriginal = ref.read(originalBytesProvider);
-    var failed = 0;
+    final failed = <LocalPhoto>[];
     setState(() => _done = 0);
     for (final photo in chosen) {
-      final original = await readOriginal(photo.assetId);
-      final result = original == null
-          ? const Err<String>(AppError.unknown)
-          : await repo.upload(
-              coupleId: widget.query.coupleId,
-              tripId: widget.query.tripId,
-              regionId: photo.regionId,
-              takenAt: photo.takenAt,
-              original: original,
-            );
-      if (result is Err) failed++;
+      try {
+        final original = await readOriginal(photo.assetId);
+        final result = original == null
+            ? const Err<String>(AppError.unknown)
+            : await repo.upload(
+                coupleId: widget.query.coupleId,
+                tripId: widget.query.tripId,
+                regionId: photo.regionId,
+                takenAt: photo.takenAt,
+                original: original,
+              );
+        if (result is Err) failed.add(photo);
+      } catch (_) {
+        failed.add(photo);
+      }
       if (!mounted) return;
       setState(() => _done = _done! + 1);
     }
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          failed == 0 ? '${chosen.length}장을 올렸어요' : '$failed장을 올리지 못했어요',
-        ),
-      ),
-    );
+    setState(() {
+      _hasFailures = failed.isNotEmpty;
+      _selected = failed.map((photo) => photo.assetId).toSet();
+      _done = null;
+    });
+    if (failed.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${failed.length}장을 올리지 못했어요. 실패한 사진만 선택했어요.')),
+      );
+      return;
+    }
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('${chosen.length}장을 올렸어요')));
     Navigator.of(context).maybePop();
   }
 
@@ -151,69 +163,74 @@ class _PhotoUploadPageState extends ConsumerState<PhotoUploadPage> {
           ];
     final selected = _selected ?? const <String>{};
     final uploading = _done != null;
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('사진 고르기'),
-        actions: [
-          TextButton(
-            onPressed: uploading
-                ? null
-                : () => Navigator.of(context).maybePop(),
-            child: const Text('나중에'),
-          ),
-        ],
-      ),
-      body: switch (photos) {
-        AsyncValue(hasValue: true) => Column(
-          children: [
-            TextButton.icon(
-              icon: const Icon(Icons.photo_library),
-              label: const Text('사진첩에서 더 고르기'),
-              onPressed: uploading ? null : _pickMore,
-            ),
-            Expanded(
-              child: GridView.count(
-                crossAxisCount: 4,
-                padding: const EdgeInsets.all(2),
-                mainAxisSpacing: 2,
-                crossAxisSpacing: 2,
-                children: [
-                  for (final p in list!)
-                    _SelectableThumbnail(
-                      assetId: p.assetId,
-                      selected: selected.contains(p.assetId),
-                      onTap: uploading
-                          ? null
-                          : () => setState(
-                              () => selected.contains(p.assetId)
-                                  ? _selected!.remove(p.assetId)
-                                  : _selected!.add(p.assetId),
-                            ),
-                    ),
-                ],
-              ),
+    return PopScope(
+      canPop: !uploading,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('사진 고르기'),
+          actions: [
+            TextButton(
+              onPressed: uploading
+                  ? null
+                  : () => Navigator.of(context).maybePop(),
+              child: const Text('나중에'),
             ),
           ],
         ),
-        AsyncValue(error: AppError.photoPermission) => const Center(
-          child: Text('사진 전체 접근을 허용해야 고를 수 있어요'),
-        ),
-        AsyncValue(hasError: true) => const Center(
-          child: Text('사진을 불러오지 못했어요'),
-        ),
-        _ => const Center(child: CircularProgressIndicator()),
-      },
-      bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: FilledButton(
-            onPressed: list == null || selected.isEmpty || uploading
-                ? null
-                : () => _upload(list),
-            child: Text(
-              uploading
-                  ? '$_done / ${selected.length} 올리는 중'
-                  : '${selected.length}장 올리기',
+        body: switch (photos) {
+          AsyncValue(hasValue: true) => Column(
+            children: [
+              TextButton.icon(
+                icon: const Icon(Icons.photo_library),
+                label: const Text('사진첩에서 더 고르기'),
+                onPressed: uploading ? null : _pickMore,
+              ),
+              Expanded(
+                child: GridView.count(
+                  crossAxisCount: 4,
+                  padding: const EdgeInsets.all(2),
+                  mainAxisSpacing: 2,
+                  crossAxisSpacing: 2,
+                  children: [
+                    for (final p in list!)
+                      _SelectableThumbnail(
+                        assetId: p.assetId,
+                        selected: selected.contains(p.assetId),
+                        onTap: uploading
+                            ? null
+                            : () => setState(
+                                () => selected.contains(p.assetId)
+                                    ? _selected!.remove(p.assetId)
+                                    : _selected!.add(p.assetId),
+                              ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          AsyncValue(error: AppError.photoPermission) => const Center(
+            child: Text('사진 전체 접근을 허용해야 고를 수 있어요'),
+          ),
+          AsyncValue(hasError: true) => const Center(
+            child: Text('사진을 불러오지 못했어요'),
+          ),
+          _ => const Center(child: CircularProgressIndicator()),
+        },
+        bottomNavigationBar: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: FilledButton(
+              onPressed: list == null || selected.isEmpty || uploading
+                  ? null
+                  : () => _upload(list),
+              child: Text(
+                uploading
+                    ? '$_done / ${selected.length} 올리는 중'
+                    : _hasFailures
+                    ? '${selected.length}장 다시 올리기'
+                    : '${selected.length}장 올리기',
+              ),
             ),
           ),
         ),

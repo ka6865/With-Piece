@@ -25,8 +25,14 @@ class ProvinceMapPage extends ConsumerWidget {
     final provinces = ref.watch(provinceMapAssetProvider);
     final regions = ref.watch(regionMapAssetProvider);
     // 진행 데이터가 없거나 오류여도 지도는 그린다(설계 12장)
-    final trips = ref.watch(tripsProvider).value ?? const [];
-    final home = ref.watch(homeRegionIdsProvider).value ?? const <String>{};
+    final tripsState = ref.watch(tripsProvider);
+    final homeState = ref.watch(homeRegionIdsProvider);
+    final trips = tripsState.isLoading || tripsState.hasError
+        ? const <Trip>[]
+        : tripsState.value ?? const <Trip>[];
+    final home = homeState.isLoading || homeState.hasError
+        ? const <String>{}
+        : homeState.value ?? const <String>{};
     final travel = filledRegionIds(trips, const {});
     return switch ((provinces, regions)) {
       (

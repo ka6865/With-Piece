@@ -74,7 +74,7 @@ Future<void> pumpApp(WidgetTester tester, String location) async {
         tripsProvider.overrideWith((ref) async => trips),
         homeRegionIdsProvider.overrideWith((ref) async => const {}),
         tripCandidatesProvider.overrideWith((ref) async => const []),
-        couplePhotosProvider.overrideWith(
+        couplePhotosProvider('me').overrideWith(
           (ref) async => [
             photo('p1', 't3', 'me'),
             photo('p2', 't3', 'partner'),

@@ -31,7 +31,7 @@ Future<void> pumpApp(WidgetTester tester, String location) async {
         provinceMapAssetProvider.overrideWith((ref) => provinces),
         regionMapAssetProvider.overrideWith((ref) => regions),
         currentUserIdProvider.overrideWithValue('me'),
-        archivedCouplesProvider.overrideWith(
+        archivedCouplesProvider('me').overrideWith(
           (ref) async => [
             ArchivedCouple(
               id: 'c-old',
@@ -41,7 +41,7 @@ Future<void> pumpApp(WidgetTester tester, String location) async {
             ),
           ],
         ),
-        archivedTripsProvider('c-old').overrideWith(
+        archivedTripsProvider((userId: 'me', coupleId: 'c-old')).overrideWith(
           (ref) async => [
             Trip(
               id: 't1',
@@ -53,7 +53,7 @@ Future<void> pumpApp(WidgetTester tester, String location) async {
             ),
           ],
         ),
-        archivedPhotosProvider('c-old').overrideWith(
+        archivedPhotosProvider((userId: 'me', coupleId: 'c-old')).overrideWith(
           (ref) async => [
             PhotoRecord(
               id: 'p1',

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:woori_piece/core/result/result.dart';
+import 'package:woori_piece/core/supabase/supabase_providers.dart';
 import 'package:woori_piece/data/repositories/account_repository.dart';
 import 'package:woori_piece/data/repositories/repository_providers.dart';
 import 'package:woori_piece/features/auth/account_state.dart';
@@ -35,8 +36,9 @@ Future<FakeAccountRepository> pump(
     ProviderScope(
       overrides: [
         accountRepositoryProvider.overrideWithValue(repo),
-        myDeletionDateProvider.overrideWith((ref) async => mine),
-        partnerDeletionDatesProvider.overrideWith((ref) async => partner),
+        sessionUserIdProvider.overrideWithValue('me'),
+        myDeletionDateProvider('me').overrideWith((ref) async => mine),
+        partnerDeletionDatesProvider('me').overrideWith((ref) async => partner),
       ],
       child: const MaterialApp(home: Scaffold(body: DeletionBanners())),
     ),

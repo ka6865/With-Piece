@@ -18,8 +18,10 @@ enum AppStage {
 }
 
 final currentCoupleProvider = FutureProvider<Couple?>((ref) async {
-  // 세션이 바뀌면 다시 읽는다
-  ref.watch(sessionProvider);
+  final session = ref.watch(sessionProvider);
+  if (session.isLoading || session.hasError || session.value == null) {
+    return null;
+  }
   return (await ref.watch(coupleRepositoryProvider).current()).valueOrThrow;
 });
 
@@ -50,12 +52,18 @@ final pendingInviteCodeProvider = NotifierProvider<PendingInviteCode, String?>(
   PendingInviteCode.new,
 );
 
-final myInviteProvider = FutureProvider<Invite?>(
-  (ref) async =>
-      (await ref.watch(coupleRepositoryProvider).myInvite()).valueOrThrow,
-);
+final myInviteProvider = FutureProvider.family<Invite?, String>((
+  ref,
+  userId,
+) async {
+  if (ref.watch(sessionUserIdProvider) != userId) return null;
+  return (await ref.watch(coupleRepositoryProvider).myInvite()).valueOrThrow;
+});
 
-final identitiesProvider = FutureProvider<List<UserIdentity>>(
-  (ref) async =>
-      (await ref.watch(authRepositoryProvider).identities()).valueOrThrow,
-);
+final identitiesProvider = FutureProvider.family<List<UserIdentity>, String>((
+  ref,
+  userId,
+) async {
+  if (ref.watch(sessionUserIdProvider) != userId) return const [];
+  return (await ref.watch(authRepositoryProvider).identities()).valueOrThrow;
+});

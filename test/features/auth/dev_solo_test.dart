@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:woori_piece/core/supabase/supabase_providers.dart';
 import 'package:woori_piece/core/dev_flags.dart';
 import 'package:woori_piece/data/repositories/repository_providers.dart';
 import 'package:woori_piece/features/auth/invite_page.dart';
@@ -15,6 +16,7 @@ Future<FakeCoupleRepository> pump(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        sessionUserIdProvider.overrideWithValue('me'),
         devSoloEnabledProvider.overrideWithValue(devSolo),
         coupleRepositoryProvider.overrideWithValue(couple),
         authRepositoryProvider.overrideWithValue(FakeAuthRepository()),

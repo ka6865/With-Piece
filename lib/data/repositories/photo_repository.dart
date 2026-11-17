@@ -127,13 +127,20 @@ class PhotoRepository {
   Future<Result<List<PhotoRecord>>> forCouple(
     String coupleId,
   ) => guard(() async {
-    final rows = await _client
+    final query = _client
         .from('photos')
         .select(
           'id, trip_id, region_id, object_key, uploaded_by, taken_at, width, height',
         )
         .eq('couple_id', coupleId)
-        .order('taken_at');
+        .order('taken_at')
+        .order('id');
+    final rows = <Map<String, dynamic>>[];
+    for (var offset = 0; ; offset += 1000) {
+      final page = await query.range(offset, offset + 999);
+      rows.addAll(page);
+      if (page.length < 1000) break;
+    }
     return [
       for (final row in rows)
         PhotoRecord(

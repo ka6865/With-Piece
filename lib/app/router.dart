@@ -12,6 +12,7 @@ import '../features/auth/login_page.dart';
 import '../features/auth/started_on_page.dart';
 import '../features/map/view/national_map_page.dart';
 import '../features/map/view/province_map_page.dart';
+import '../features/scan/photo_sharing_page.dart';
 import '../features/trip/manual_trip_page.dart';
 import '../features/trip/trip_candidates_page.dart';
 
@@ -36,7 +37,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(path: '/login', builder: (_, _) => const LoginPage()),
       GoRoute(path: '/invite', builder: (_, _) => const InvitePage()),
-      GoRoute(path: '/started-on', builder: (_, _) => const StartedOnPage()),
+      GoRoute(
+        path: '/started-on',
+        builder: (_, state) => StartedOnPage(
+          isEditing: state.uri.queryParameters['edit'] == 'true',
+        ),
+      ),
       GoRoute(path: '/album', builder: (_, _) => const AlbumPage()),
       GoRoute(path: '/archive', builder: (_, _) => const ArchivePage()),
       GoRoute(
@@ -73,6 +79,10 @@ final routerProvider = Provider<GoRouter>((ref) {
             RegionPhotosPage(regionId: state.pathParameters['regionId']!),
       ),
       GoRoute(
+        path: '/settings/photo-sharing',
+        builder: (_, _) => const PhotoSharingPage(),
+      ),
+      GoRoute(
         path: '/settings/accounts',
         builder: (_, _) => const AccountLinksPage(),
       ),
@@ -100,11 +110,16 @@ String? _redirect(Ref ref, Uri uri) {
     // 커플이 없어도 설정과 지난 기록(아카이브)은 볼 수 있어야 한다(설계 14장)
     AppStage.needsCouple || AppStage.needsStartedOn
         when uri.path.startsWith('/archive') ||
-            uri.path == '/settings/accounts' =>
+            uri.path.startsWith('/settings') =>
       null,
     AppStage.needsCouple => '/invite',
     AppStage.needsStartedOn => '/started-on',
-    AppStage.ready => _onboarding.contains(uri.path) ? '/' : null,
+    AppStage.ready =>
+      _onboarding.contains(uri.path) &&
+              !(uri.path == '/started-on' &&
+                  uri.queryParameters['edit'] == 'true')
+          ? '/'
+          : null,
     AppStage.loading || AppStage.unavailable => null,
   };
   return target == uri.path ? null : target;

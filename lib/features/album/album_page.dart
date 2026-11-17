@@ -19,28 +19,43 @@ class AlbumPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final archived = archivedCoupleId;
+    final userId = ref.watch(currentUserIdProvider);
     final trips = archived == null
-        ? ref.watch(tripsProvider)
-        : ref.watch(archivedTripsProvider(archived));
-    final photos =
-        (archived == null
-                ? ref.watch(couplePhotosProvider)
-                : ref.watch(archivedPhotosProvider(archived)))
-            .value ??
-        const [];
+        ? userId == null
+              ? const AsyncLoading<List<Trip>>()
+              : ref.watch(tripsProvider)
+        : userId == null
+        ? const AsyncLoading<List<Trip>>()
+        : ref.watch(
+            archivedTripsProvider((userId: userId, coupleId: archived)),
+          );
+    final photosState = archived == null
+        ? userId == null
+              ? const AsyncLoading<List<PhotoRecord>>()
+              : ref.watch(couplePhotosProvider(userId))
+        : userId == null
+        ? const AsyncLoading<List<PhotoRecord>>()
+        : ref.watch(
+            archivedPhotosProvider((userId: userId, coupleId: archived)),
+          );
+    final photos = photosState.isLoading || photosState.hasError
+        ? const <PhotoRecord>[]
+        : photosState.value ?? const <PhotoRecord>[];
     final names = ref.watch(regionNamesProvider).value ?? const {};
+    final tripRows = trips.isLoading || trips.hasError ? null : trips.value;
     final confirmed = [
-      ...?trips.value?.where((t) => t.status == TripStatus.confirmed),
+      ...?tripRows?.where((t) => t.status == TripStatus.confirmed),
     ]..sort((a, b) => b.range.start.compareTo(a.range.start));
     final covers = {
       for (final trip in confirmed) trip.id: ?_coverOf(trip, photos),
     };
     return Scaffold(
       appBar: AppBar(title: Text(archived == null ? '퍼즐 앨범' : '지난 기록')),
-      body: trips.hasValue
+      body: !trips.hasError && !trips.isLoading && trips.hasValue
           ? confirmed.isEmpty
                 ? const Center(child: Text('아직 확인한 여행이 없어요'))
                 : FutureBuilder<Map<String, String>>(
+                    key: ValueKey(userId),
                     future: ref.watch(signedUrlCacheProvider).urls([
                       for (final c in covers.values) c.thumbPath,
                     ]),
