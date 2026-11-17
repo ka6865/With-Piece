@@ -9,12 +9,13 @@ import 'package:woori_piece/features/trip/photo_selection.dart';
 import 'package:woori_piece/features/trip/photo_upload_page.dart';
 
 class UploadCall {
-  UploadCall(this.asset, this.tripId, this.regionId, this.takenAt);
+  UploadCall(this.asset, this.tripId, this.regionId, this.takenAt, this.id);
 
   final int asset;
   final String tripId;
   final String? regionId;
   final DateTime? takenAt;
+  final String? id;
 }
 
 class FakePhotoRepository implements PhotoRepository {
@@ -36,9 +37,10 @@ class FakePhotoRepository implements PhotoRepository {
     required String? regionId,
     required DateTime? takenAt,
     required Uint8List original,
+    String? id,
   }) async {
     final asset = original.single;
-    calls.add(UploadCall(asset, tripId, regionId, takenAt));
+    calls.add(UploadCall(asset, tripId, regionId, takenAt, id));
     if (failAlways.contains(asset) || failFirst.remove(asset)) {
       return const Err(AppError.unknown);
     }
@@ -198,5 +200,7 @@ void main() {
       0x31,
       0x32,
     ]);
+    expect(repo.calls[0].id, isNotNull);
+    expect(repo.calls[0].id, repo.calls[5].id);
   });
 }

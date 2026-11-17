@@ -1,5 +1,8 @@
+import 'dart:convert';
+
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:woori_piece/core/media/heic_encoder.dart';
 import 'package:woori_piece/core/result/result.dart';
@@ -52,6 +55,80 @@ Future<(SupabaseClient, String, String)> coupleWithTrip() async {
   return (a, coupleId, tripId);
 }
 
+class LoseFirstCommitResponseClient extends http.BaseClient {
+  final objects = <String>{};
+  final rows = <String, Map<String, dynamic>>{};
+  var lostStorageResponse = false;
+  var lostDatabaseResponse = false;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    final path = request.url.path;
+    if (path.contains('/storage/v1/object/photos/')) {
+      final objectPath = path.split('/storage/v1/object/photos/').last;
+      if (request.method == 'POST') {
+        if (!objects.add(objectPath)) {
+          return _reply(request, 409, {
+            'statusCode': 409,
+            'error': 'Duplicate',
+            'message': 'The resource already exists',
+          });
+        }
+        if (!lostStorageResponse && objectPath.contains('/full/')) {
+          lostStorageResponse = true;
+          throw http.ClientException('response lost after commit', request.url);
+        }
+        return _reply(request, 200, {'Key': 'photos/$objectPath'});
+      }
+      if (request.method == 'DELETE') {
+        final body = jsonDecode((request as http.Request).body) as Map;
+        objects.removeWhere(
+          (path) => (body['prefixes'] as List).contains(path),
+        );
+        return _reply(request, 200, []);
+      }
+    }
+
+    if (path.endsWith('/rest/v1/photos') && request.method == 'POST') {
+      final row =
+          jsonDecode((request as http.Request).body) as Map<String, dynamic>;
+      final id = row['id'] as String;
+      if (rows.containsKey(id)) {
+        return _reply(request, 409, {
+          'code': '23505',
+          'message': 'duplicate key value violates unique constraint',
+          'details': 'Key (id)=($id) already exists.',
+          'hint': null,
+        });
+      }
+      rows[id] = row;
+      if (!lostDatabaseResponse) {
+        lostDatabaseResponse = true;
+        throw http.ClientException('response lost after commit', request.url);
+      }
+      return _reply(request, 201, []);
+    }
+    if (path.endsWith('/rest/v1/photos') && request.method == 'GET') {
+      final id = request.url.queryParameters['id']?.replaceFirst('eq.', '');
+      return _reply(request, 200, [
+        if (rows.containsKey(id)) {'id': id},
+      ]);
+    }
+    throw StateError('예상하지 못한 요청: ${request.method} ${request.url}');
+  }
+
+  http.StreamedResponse _reply(
+    http.BaseRequest request,
+    int statusCode,
+    Object body,
+  ) => http.StreamedResponse(
+    Stream.value(utf8.encode(jsonEncode(body))),
+    statusCode,
+    headers: {'content-type': 'application/json'},
+    request: request,
+  );
+}
+
 Future<List<String>> objectsUnder(SupabaseClient client, String prefix) async =>
     [
       for (final size in ['full', 'thumb'])
@@ -66,13 +143,25 @@ Future<void> main() async {
 
   test('상세·썸네일을 올리고 photos 행을 넣는다', () async {
     final (client, coupleId, tripId) = await coupleWithTrip();
-    final photoId = (await PhotoRepository(client, FakeEncoder()).upload(
+    final repository = PhotoRepository(client, FakeEncoder());
+    final photoId = (await repository.upload(
       coupleId: coupleId,
       tripId: tripId,
       regionId: '32060',
       takenAt: DateTime(2026, 10, 3, 9),
       original: original,
     )).valueOrThrow;
+    expect(
+      (await repository.upload(
+        id: photoId,
+        coupleId: coupleId,
+        tripId: tripId,
+        regionId: '32060',
+        takenAt: DateTime(2026, 10, 3, 9),
+        original: original,
+      )).valueOrThrow,
+      photoId,
+    );
     final row = await client.from('photos').select().eq('id', photoId).single();
     expect(row['object_key'], '$coupleId/$tripId/$photoId.heic');
     expect(row['width'], 2048);
@@ -81,6 +170,10 @@ Future<void> main() async {
       'full/$photoId.heic',
       'thumb/$photoId.heic',
     ]);
+    expect(
+      await client.from('photos').select('id').eq('id', photoId),
+      hasLength(1),
+    );
   }, skip: skip);
 
   test('photos 삽입이 실패하면 방금 올린 두 객체를 지운다', () async {
@@ -96,6 +189,43 @@ Future<void> main() async {
     expect(result, isA<Err<String>>());
     expect(await objectsUnder(client, '$coupleId/$missingTrip'), isEmpty);
   }, skip: skip);
+
+  test('Storage·삽입 응답을 잃은 뒤 같은 ID로 재시도하면 기존 사진을 보존한다', () async {
+    final httpClient = LoseFirstCommitResponseClient();
+    final client = SupabaseClient(
+      'http://localhost:54321',
+      'test-key',
+      accessToken: () async => 'test-token',
+      httpClient: httpClient,
+      postgrestOptions: const PostgrestClientOptions(retryEnabled: false),
+    );
+    addTearDown(client.dispose);
+    const coupleId = 'couple-id';
+    const tripId = 'trip-id';
+    const photoId = '90f888df-24bd-44ad-a9a7-7583758ec129';
+    final repository = PhotoRepository(client, FakeEncoder());
+    Future<Result<String>> upload() => repository.upload(
+      id: photoId,
+      coupleId: coupleId,
+      tripId: tripId,
+      regionId: '32060',
+      takenAt: DateTime(2026, 10, 3),
+      original: original,
+    );
+
+    expect(await upload(), isA<Err<String>>());
+    expect(httpClient.lostStorageResponse, isTrue);
+    expect(httpClient.lostDatabaseResponse, isFalse);
+    expect(httpClient.objects, hasLength(1));
+
+    expect(await upload(), isA<Err<String>>());
+    expect(httpClient.lostDatabaseResponse, isTrue);
+    expect(httpClient.objects, hasLength(2));
+
+    expect(await upload(), isA<Ok<String>>());
+    expect(httpClient.rows, contains(photoId));
+    expect(httpClient.objects, hasLength(2));
+  });
 
   test('HEIC를 쓸 수 없으면 JPEG로 올린다', () async {
     final (client, coupleId, tripId) = await coupleWithTrip();

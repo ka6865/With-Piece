@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -48,13 +51,14 @@ class PhotoRepository {
   final ImageEncoder _encoder;
 
   Future<Result<String>> upload({
+    String? id,
     required String coupleId,
     required String tripId,
     required String? regionId,
     required DateTime? takenAt,
     required Uint8List original,
   }) async {
-    final id = uuidV4();
+    final photoId = id ?? uuidV4();
     final Map<String, Uint8List> encoded;
     final ImageFormat format;
     try {
@@ -64,37 +68,64 @@ class PhotoRepository {
     }
     final ext = format == ImageFormat.heic ? 'heic' : 'jpg';
     final paths = {
-      for (final size in sizes.keys) size: '$coupleId/$tripId/$size/$id.$ext',
+      for (final size in sizes.keys)
+        size: '$coupleId/$tripId/$size/$photoId.$ext',
     };
     final storage = _client.storage.from(bucket);
     final uploaded = <String>[];
+    var insertAttempted = false;
+    var knownInsertRejection = false;
     try {
       for (final MapEntry(key: size, value: path) in paths.entries) {
-        await storage.uploadBinary(
-          path,
-          encoded[size]!,
-          fileOptions: FileOptions(
-            contentType: ext == 'heic' ? 'image/heic' : 'image/jpeg',
-          ),
-        );
-        uploaded.add(path);
+        try {
+          await storage.uploadBinary(
+            path,
+            encoded[size]!,
+            fileOptions: FileOptions(
+              contentType: ext == 'heic' ? 'image/heic' : 'image/jpeg',
+            ),
+          );
+          uploaded.add(path);
+        } on StorageException catch (error) {
+          if (error.statusCode != '409' || error.error != 'Duplicate') rethrow;
+        }
       }
       final info = await _encoder.inspect(encoded['full']!);
-      await _client.from('photos').insert({
-        'id': id,
-        'trip_id': tripId,
-        'couple_id': coupleId,
-        'region_id': regionId,
-        'object_key': '$coupleId/$tripId/$id.$ext',
-        'width': info.width,
-        'height': info.height,
-        'byte_size': encoded['full']!.length,
-        'taken_at': takenAt?.toUtc().toIso8601String(),
-      });
-      return Ok(id);
+      insertAttempted = true;
+      try {
+        await _client.from('photos').insert({
+          'id': photoId,
+          'trip_id': tripId,
+          'couple_id': coupleId,
+          'region_id': regionId,
+          'object_key': '$coupleId/$tripId/$photoId.$ext',
+          'width': info.width,
+          'height': info.height,
+          'byte_size': encoded['full']!.length,
+          'taken_at': takenAt?.toUtc().toIso8601String(),
+        });
+      } on PostgrestException catch (error) {
+        if (error.code == '23505') {
+          final existing = await _client
+              .from('photos')
+              .select('id')
+              .eq('id', photoId)
+              .eq('couple_id', coupleId)
+              .eq('trip_id', tripId)
+              .maybeSingle();
+          if (existing != null) return Ok(photoId);
+          rethrow;
+        }
+        knownInsertRejection =
+            error.code == '42501' || (error.code?.startsWith('23') == true);
+        rethrow;
+      }
+      return Ok(photoId);
     } catch (error) {
-      // 행이 없는 객체가 남지 않게 즉시 지운다. 실패해도 주간 정리가 메운다(설계 8.3)
-      if (uploaded.isNotEmpty) {
+      final mayClean = insertAttempted
+          ? knownInsertRejection
+          : !_isUncertain(error);
+      if (mayClean && uploaded.isNotEmpty) {
         try {
           await storage.remove(uploaded);
         } catch (_) {}
@@ -102,6 +133,14 @@ class PhotoRepository {
       return Err(appErrorOf(error));
     }
   }
+
+  bool _isUncertain(Object error) => switch (error) {
+    SocketException() || TimeoutException() => true,
+    StorageException(statusCode: final statusCode?) =>
+      (int.tryParse(statusCode) ?? 500) >= 500,
+    StorageException() => true,
+    _ => false,
+  };
 
   Future<(Map<String, Uint8List>, ImageFormat)> _encodeAll(
     Uint8List original,

@@ -6,6 +6,7 @@ import 'package:photo_manager/photo_manager.dart';
 import '../../core/media/heic_encoder.dart';
 import '../../core/result/result.dart';
 import '../../core/supabase/supabase_providers.dart';
+import '../../core/uuid.dart';
 import '../../data/repositories/photo_repository.dart';
 import '../../data/repositories/repository_providers.dart';
 import '../scan/scan_providers.dart';
@@ -87,6 +88,7 @@ class _PhotoUploadPageState extends ConsumerState<PhotoUploadPage> {
   Set<String>? _selected;
   // 사진첩에서 더 고른 사진. 촬영 날짜가 여행 기간과 달라 기간 목록에 없는 사진이다
   final _extra = <LocalPhoto>[];
+  final _uploadIds = <String, String>{};
   int? _done;
   var _hasFailures = false;
 
@@ -116,6 +118,7 @@ class _PhotoUploadPageState extends ConsumerState<PhotoUploadPage> {
         final result = original == null
             ? const Err<String>(AppError.unknown)
             : await repo.upload(
+                id: _uploadIds.putIfAbsent(photo.assetId, uuidV4),
                 coupleId: widget.query.coupleId,
                 tripId: widget.query.tripId,
                 regionId: photo.regionId,
