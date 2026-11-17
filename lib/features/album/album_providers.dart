@@ -11,20 +11,23 @@ import '../../data/repositories/signed_url_cache.dart';
 import '../auth/auth_state.dart';
 import '../trip/photo_upload_page.dart';
 
-final currentUserIdProvider = Provider<String?>(
-  (ref) => ref.watch(sessionUserIdProvider),
-);
-
 final couplePhotosProvider = FutureProvider.family<List<PhotoRecord>, String>((
   ref,
   userId,
 ) async {
-  if (ref.watch(currentUserIdProvider) != userId) return const [];
-  final coupleId = (await ref.watch(currentCoupleProvider.future))?.id;
-  if (coupleId == null) return const [];
-  return (await ref.watch(photoRepositoryProvider).forCouple(coupleId))
-      .valueOrThrow;
+  if (ref.watch(sessionUserIdProvider) != userId) return const [];
+  final coupleFuture = ref.watch(currentCoupleProvider.future);
+  final repository = ref.watch(photoRepositoryProvider);
+  final coupleId = (await coupleFuture)?.id;
+  if (coupleId == null || !ref.mounted) return const [];
+  return (await repository.forCouple(coupleId)).valueOrThrow;
 });
+
+final scopedCouplePhotosProvider = FutureProvider.autoDispose
+    .family<List<PhotoRecord>, CoupleScope>((ref, scope) {
+      if (ref.watch(currentCoupleScopeProvider) != scope) return const [];
+      return ref.watch(couplePhotosProvider(scope.userId).future);
+    });
 
 // 앱 전체에서 하나를 쓴다. 화면을 오가도 유효한 URL을 다시 받지 않는다
 final signedUrlCacheProvider = Provider<SignedUrlCache>((ref) {
@@ -50,7 +53,7 @@ final signedUrlCacheProvider = Provider<SignedUrlCache>((ref) {
 // 아카이브된 커플의 기록. RLS가 읽기만 허용한다(설계 9장, 14장)
 final archivedCouplesProvider =
     FutureProvider.family<List<ArchivedCouple>, String>((ref, userId) async {
-      if (ref.watch(currentUserIdProvider) != userId) return const [];
+      if (ref.watch(sessionUserIdProvider) != userId) return const [];
       return (await ref.watch(coupleRepositoryProvider).archived())
           .valueOrThrow;
     });
@@ -59,7 +62,7 @@ typedef ArchivedCoupleScope = ({String userId, String coupleId});
 
 final archivedTripsProvider =
     FutureProvider.family<List<Trip>, ArchivedCoupleScope>((ref, scope) async {
-      if (ref.watch(currentUserIdProvider) != scope.userId) return const [];
+      if (ref.watch(sessionUserIdProvider) != scope.userId) return const [];
       return (await ref.watch(tripRepositoryProvider).trips(scope.coupleId))
           .valueOrThrow;
     });
@@ -69,7 +72,7 @@ final archivedPhotosProvider =
       ref,
       scope,
     ) async {
-      if (ref.watch(currentUserIdProvider) != scope.userId) return const [];
+      if (ref.watch(sessionUserIdProvider) != scope.userId) return const [];
       return (await ref
               .watch(photoRepositoryProvider)
               .forCouple(scope.coupleId))

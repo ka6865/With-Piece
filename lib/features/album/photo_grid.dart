@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/supabase/supabase_providers.dart';
+
 import '../../data/repositories/photo_repository.dart';
 import 'album_providers.dart';
 
@@ -19,7 +21,7 @@ class PhotoGrid extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final userId = ref.watch(currentUserIdProvider);
+    final userId = ref.watch(sessionUserIdProvider);
     if (userId == null || photos.isEmpty) {
       return const Padding(
         padding: EdgeInsets.all(24),
@@ -88,7 +90,7 @@ class _FullPhotoPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (ref.watch(currentUserIdProvider) != userId) {
+    if (ref.watch(sessionUserIdProvider) != userId) {
       return const Scaffold(
         backgroundColor: Colors.black,
         body: Center(child: Text('계정이 바뀌어 사진을 닫았어요')),

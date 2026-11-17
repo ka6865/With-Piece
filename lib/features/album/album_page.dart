@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../core/supabase/supabase_providers.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/repositories/photo_repository.dart';
 import '../../data/repositories/trip_repository.dart';
 import '../scan/scan_providers.dart';
+import '../auth/auth_state.dart';
 import '../trip/trip_candidates_page.dart';
 import 'album_providers.dart';
 import 'photo_grid.dart';
@@ -19,30 +22,27 @@ class AlbumPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final archived = archivedCoupleId;
-    final userId = ref.watch(currentUserIdProvider);
-    final trips = archived == null
-        ? userId == null
-              ? const AsyncLoading<List<Trip>>()
-              : ref.watch(tripsProvider)
-        : userId == null
-        ? const AsyncLoading<List<Trip>>()
-        : ref.watch(
-            archivedTripsProvider((userId: userId, coupleId: archived)),
-          );
-    final photosState = archived == null
-        ? userId == null
-              ? const AsyncLoading<List<PhotoRecord>>()
-              : ref.watch(couplePhotosProvider(userId))
-        : userId == null
-        ? const AsyncLoading<List<PhotoRecord>>()
-        : ref.watch(
-            archivedPhotosProvider((userId: userId, coupleId: archived)),
-          );
-    final photos = photosState.isLoading || photosState.hasError
-        ? const <PhotoRecord>[]
-        : photosState.value ?? const <PhotoRecord>[];
+    final userId = ref.watch(sessionUserIdProvider);
+    final scope = ref.watch(currentCoupleScopeProvider);
+    AsyncValue<List<Trip>> trips = const AsyncLoading();
+    if (userId != null && archived != null) {
+      trips = ref.watch(
+        archivedTripsProvider((userId: userId, coupleId: archived)),
+      );
+    } else if (scope != null) {
+      trips = ref.watch(scopedTripsProvider(scope));
+    }
+    AsyncValue<List<PhotoRecord>> photosState = const AsyncLoading();
+    if (userId != null && archived != null) {
+      photosState = ref.watch(
+        archivedPhotosProvider((userId: userId, coupleId: archived)),
+      );
+    } else if (scope != null) {
+      photosState = ref.watch(scopedCouplePhotosProvider(scope));
+    }
+    final photos = photosState.value ?? const <PhotoRecord>[];
     final names = ref.watch(regionNamesProvider).value ?? const {};
-    final tripRows = trips.isLoading || trips.hasError ? null : trips.value;
+    final tripRows = trips.value;
     final confirmed = [
       ...?tripRows?.where((t) => t.status == TripStatus.confirmed),
     ]..sort((a, b) => b.range.start.compareTo(a.range.start));
@@ -51,11 +51,14 @@ class AlbumPage extends ConsumerWidget {
     };
     return Scaffold(
       appBar: AppBar(title: Text(archived == null ? '퍼즐 앨범' : '지난 기록')),
-      body: !trips.hasError && !trips.isLoading && trips.hasValue
+      body: trips.hasValue
           ? confirmed.isEmpty
                 ? const Center(child: Text('아직 확인한 여행이 없어요'))
                 : FutureBuilder<Map<String, String>>(
-                    key: ValueKey(userId),
+                    key: ValueKey((
+                      userId: userId,
+                      coupleId: archived ?? scope?.coupleId,
+                    )),
                     future: ref.watch(signedUrlCacheProvider).urls([
                       for (final c in covers.values) c.thumbPath,
                     ]),

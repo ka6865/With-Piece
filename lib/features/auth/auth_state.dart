@@ -18,11 +18,34 @@ enum AppStage {
 }
 
 final currentCoupleProvider = FutureProvider<Couple?>((ref) async {
-  final session = ref.watch(sessionProvider);
-  if (session.isLoading || session.hasError || session.value == null) {
+  final userId = ref.watch(sessionUserIdProvider);
+  if (userId == null) {
     return null;
   }
   return (await ref.watch(coupleRepositoryProvider).current()).valueOrThrow;
+});
+
+// 기존 future·무효화 호출은 유지하고, 표시할 값은 계정별로 분리한다.
+final currentCoupleForUserProvider = FutureProvider.autoDispose
+    .family<Couple?, String>((ref, userId) async {
+      if (ref.watch(sessionUserIdProvider) != userId) return null;
+      return await ref.watch(currentCoupleProvider.future);
+    });
+
+final scopedCurrentCoupleProvider = Provider<AsyncValue<Couple?>>((ref) {
+  final userId = ref.watch(sessionUserIdProvider);
+  return userId == null
+      ? const AsyncData(null)
+      : ref.watch(currentCoupleForUserProvider(userId));
+});
+
+typedef CoupleScope = ({String userId, String coupleId});
+
+final currentCoupleScopeProvider = Provider<CoupleScope?>((ref) {
+  final userId = ref.watch(sessionUserIdProvider);
+  final couple = ref.watch(scopedCurrentCoupleProvider).value;
+  if (userId == null || couple == null) return null;
+  return (userId: userId, coupleId: couple.id);
 });
 
 final appStageProvider = Provider<AppStage>(

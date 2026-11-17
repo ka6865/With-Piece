@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import 'package:woori_piece/core/supabase/supabase_providers.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:woori_piece/data/repositories/photo_repository.dart';
 import 'package:woori_piece/data/repositories/signed_url_cache.dart';
@@ -13,7 +15,7 @@ void main() {
     final userStream = StreamProvider<String?>((ref) => users.stream);
     final container = ProviderContainer(
       overrides: [
-        currentUserIdProvider.overrideWith(
+        sessionUserIdProvider.overrideWith(
           (ref) => ref.watch(userStream).value,
         ),
         signedUrlCacheProvider.overrideWithValue(

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../core/supabase/supabase_providers.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/repositories/couple_repository.dart';
@@ -11,41 +13,37 @@ class ArchivePage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final userId = ref.watch(currentUserIdProvider);
+    final userId = ref.watch(sessionUserIdProvider);
     final couples = userId == null
         ? const AsyncLoading<List<ArchivedCouple>>()
         : ref.watch(archivedCouplesProvider(userId));
     String date(DateTime d) => '${d.year}.${d.month}.${d.day}';
     return Scaffold(
       appBar: AppBar(title: const Text('지난 기록')),
-      body: couples.isLoading || couples.hasError
-          ? couples.hasError
-                ? const Center(child: Text('지난 기록을 불러오지 못했어요'))
-                : const Center(child: CircularProgressIndicator())
-          : switch (couples) {
-              AsyncValue(value: final List<dynamic> list) when list.isEmpty =>
-                const Center(child: Text('지난 기록이 없어요')),
-              AsyncValue(hasValue: true) => ListView(
-                children: [
-                  for (final c in couples.value!)
-                    ListTile(
-                      title: Text(c.partnerName),
-                      subtitle: Text(
-                        c.partnerDeletionDate == null
-                            ? '${date(c.archivedAt)}에 연결이 끊겼어요'
-                            : '${c.partnerDeletionDate!.month}월 '
-                                  '${c.partnerDeletionDate!.day}일에 사라져요',
-                      ),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () => context.push('/archive/${c.id}'),
-                    ),
-                ],
+      body: switch (couples) {
+        AsyncValue(value: final List<dynamic> list) when list.isEmpty =>
+          const Center(child: Text('지난 기록이 없어요')),
+        AsyncValue(hasValue: true) => ListView(
+          children: [
+            for (final c in couples.value!)
+              ListTile(
+                title: Text(c.partnerName),
+                subtitle: Text(
+                  c.partnerDeletionDate == null
+                      ? '${date(c.archivedAt)}에 연결이 끊겼어요'
+                      : '${c.partnerDeletionDate!.month}월 '
+                            '${c.partnerDeletionDate!.day}일에 사라져요',
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => context.push('/archive/${c.id}'),
               ),
-              AsyncValue(hasError: true) => const Center(
-                child: Text('지난 기록을 불러오지 못했어요'),
-              ),
-              _ => const Center(child: CircularProgressIndicator()),
-            },
+          ],
+        ),
+        AsyncValue(hasError: true) => const Center(
+          child: Text('지난 기록을 불러오지 못했어요'),
+        ),
+        _ => const Center(child: CircularProgressIndicator()),
+      },
     );
   }
 }

@@ -32,6 +32,7 @@ class TripCandidatesPage extends ConsumerStatefulWidget {
 
 class _TripCandidatesPageState extends ConsumerState<TripCandidatesPage> {
   List<_CandidateEntry>? _items;
+  CandidateScope? _scope;
   final _hiddenSources = <TripCandidate>[];
 
   void _toast(String message) => ScaffoldMessenger.of(
@@ -124,7 +125,9 @@ class _TripCandidatesPageState extends ConsumerState<TripCandidatesPage> {
   Future<void> _confirm(
     _CandidateEntry entry,
     Map<String, String> names,
+    CandidateScope scope,
   ) async {
+    if (ref.read(candidateScopeProvider) != scope) return;
     final candidate = entry.candidate;
     final confirmation = await showTripConfirmSheet(
       context,
@@ -132,7 +135,11 @@ class _TripCandidatesPageState extends ConsumerState<TripCandidatesPage> {
       regionIds: candidate.regionIds,
       regionNames: names,
     );
-    if (confirmation == null || !mounted) return;
+    if (confirmation == null ||
+        !mounted ||
+        ref.read(candidateScopeProvider) != scope) {
+      return;
+    }
     final List<TripCandidate> latest;
     try {
       latest = await ref.read(tripCandidatesProvider.future);
@@ -140,7 +147,7 @@ class _TripCandidatesPageState extends ConsumerState<TripCandidatesPage> {
       if (mounted) _toast('여행 후보를 새로 확인하지 못했어요. 잠시 뒤에 다시 시도해 주세요');
       return;
     }
-    if (!mounted) return;
+    if (!mounted || ref.read(candidateScopeProvider) != scope) return;
     _reconcile(latest);
     if (!_isCurrent(entry, latest)) {
       _toast('이 여행 후보가 최신 기록에서 사라져 확인하지 않았어요');
@@ -156,11 +163,16 @@ class _TripCandidatesPageState extends ConsumerState<TripCandidatesPage> {
           regionIds: confirmation.regionIds,
           source: TripSource.auto,
         );
-    if (!mounted) return;
+    if (!mounted || ref.read(candidateScopeProvider) != scope) return;
     switch (result) {
       case Ok(value: final tripId):
         _done(entry);
-        await _pickPhotos(tripId, candidate.range, confirmation.regionIds);
+        await _pickPhotos(
+          tripId,
+          candidate.range,
+          confirmation.regionIds,
+          scope,
+        );
       case Err(error: AppError.validation):
         _toast('이미 확인된 여행이에요');
         _done(entry);
@@ -174,6 +186,7 @@ class _TripCandidatesPageState extends ConsumerState<TripCandidatesPage> {
     String tripId,
     DateRange range,
     List<String> regionIds,
+    CandidateScope scope,
   ) async {
     final String? coupleId;
     try {
@@ -181,7 +194,11 @@ class _TripCandidatesPageState extends ConsumerState<TripCandidatesPage> {
     } catch (_) {
       return;
     }
-    if (coupleId == null || !mounted) return;
+    if (coupleId == null ||
+        !mounted ||
+        ref.read(candidateScopeProvider) != scope) {
+      return;
+    }
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => PhotoUploadPage(
@@ -196,12 +213,13 @@ class _TripCandidatesPageState extends ConsumerState<TripCandidatesPage> {
     );
   }
 
-  Future<void> _dismiss(_CandidateEntry entry) async {
+  Future<void> _dismiss(_CandidateEntry entry, CandidateScope scope) async {
+    if (ref.read(candidateScopeProvider) != scope) return;
     final candidate = entry.candidate;
     final result = await ref
         .read(tripRepositoryProvider)
         .dismiss(candidate.range);
-    if (!mounted) return;
+    if (!mounted || ref.read(candidateScopeProvider) != scope) return;
     // 상대가 먼저 버렸으면(중복) 이미 처리된 것으로 본다
     if (result case Err(:final error) when error != AppError.validation) {
       _toast('처리하지 못했어요');
@@ -212,8 +230,14 @@ class _TripCandidatesPageState extends ConsumerState<TripCandidatesPage> {
 
   @override
   Widget build(BuildContext context) {
-    final candidates = ref.watch(tripCandidatesProvider);
-    ref.listen(tripCandidatesProvider, (previous, next) {
+    final scope = ref.watch(candidateScopeProvider);
+    if (_scope != scope) {
+      _scope = scope;
+      _items = null;
+      _hiddenSources.clear();
+    }
+    final candidates = ref.watch(scopedTripCandidatesProvider);
+    ref.listen(scopedTripCandidatesProvider, (previous, next) {
       if (next case AsyncData(:final value)) _reconcile(value);
     });
     final names = ref.watch(regionNamesProvider).value ?? const {};
@@ -257,11 +281,11 @@ class _TripCandidatesPageState extends ConsumerState<TripCandidatesPage> {
                             child: const Text('이전 후보와 합치기'),
                           ),
                         TextButton(
-                          onPressed: () => _dismiss(entry),
+                          onPressed: () => _dismiss(entry, scope),
                           child: const Text('버리기'),
                         ),
                         FilledButton(
-                          onPressed: () => _confirm(entry, names),
+                          onPressed: () => _confirm(entry, names, scope),
                           child: const Text('확인'),
                         ),
                       ],

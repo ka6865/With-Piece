@@ -78,7 +78,7 @@ class _AccountLinksPageState extends ConsumerState<AccountLinksPage> {
     return Scaffold(
       appBar: AppBar(title: const Text('계정 연결')),
       body: switch (identities) {
-        AsyncData(:final value) => ListView(
+        AsyncValue(value: final List<UserIdentity> value) => ListView(
           children: [
             for (final identity in value)
               ListTile(
@@ -105,7 +105,7 @@ class _AccountLinksPageState extends ConsumerState<AccountLinksPage> {
                   onTap: () async => toastOnError(await auth.link(provider)),
                 ),
             const Divider(),
-            if (ref.watch(currentCoupleProvider).value != null) ...[
+            if (ref.watch(scopedCurrentCoupleProvider).value != null) ...[
               ListTile(
                 title: const Text('사귄 날 수정'),
                 trailing: const Icon(Icons.chevron_right),
@@ -129,7 +129,7 @@ class _AccountLinksPageState extends ConsumerState<AccountLinksPage> {
               onTap: _rescanning ? null : _rescan,
             ),
             const Divider(),
-            if (ref.watch(currentCoupleProvider).value != null)
+            if (ref.watch(scopedCurrentCoupleProvider).value != null)
               ListTile(
                 title: const Text('커플 연결 끊기'),
                 onTap: () async {
@@ -158,7 +158,7 @@ class _AccountLinksPageState extends ConsumerState<AccountLinksPage> {
                     .requestDeletion();
                 toastOnError(result);
                 if (result is Ok) {
-                  final userId = ref.read(sessionProvider).value?.user.id;
+                  final userId = ref.read(sessionUserIdProvider);
                   if (userId != null) {
                     await ref.read(scanSyncProvider).clearForUser(userId);
                     ref

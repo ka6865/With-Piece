@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../map_data/map_asset_loader.dart';
 import '../../scan/progress.dart';
+import '../../auth/auth_state.dart';
 import '../../scan/realtime_sync.dart';
 import '../../scan/scan_providers.dart';
 import '../../trip/trip_discovery_banner.dart';
@@ -18,12 +19,14 @@ class NationalMapPage extends ConsumerWidget {
     final regions = ref.watch(regionMapAssetProvider);
     ref.watch(realtimeSyncProvider);
     // 진행 데이터가 없거나 오류여도 지도는 그린다(설계 12장)
-    final trips = ref.watch(tripsProvider);
-    final home = ref.watch(homeRegionIdsProvider);
-    final filled = filledRegionIds(
-      trips.isLoading || trips.hasError ? const [] : trips.value ?? const [],
-      home.isLoading || home.hasError ? const {} : home.value ?? const {},
-    );
+    final scope = ref.watch(currentCoupleScopeProvider);
+    final trips = scope == null
+        ? null
+        : ref.watch(scopedTripsProvider(scope)).value;
+    final home = scope == null
+        ? null
+        : ref.watch(scopedHomeRegionIdsProvider(scope)).value;
+    final filled = filledRegionIds(trips ?? const [], home ?? const {});
     return Scaffold(
       appBar: AppBar(
         title: const Text('우리들의 조각'),
@@ -52,7 +55,7 @@ class NationalMapPage extends ConsumerWidget {
             });
             return Column(
               children: [
-                const TripDiscoveryBanner(),
+                if (scope != null) const TripDiscoveryBanner(),
                 // 바다가 화면 가장자리까지 이어지도록 여백 없이 둔다
                 Expanded(
                   child: PuzzleMap(

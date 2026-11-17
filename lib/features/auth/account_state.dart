@@ -33,15 +33,11 @@ class DeletionBanners extends ConsumerWidget {
     final mineState = userId == null
         ? const AsyncData<DateTime?>(null)
         : ref.watch(myDeletionDateProvider(userId));
-    final mine = mineState.isLoading || mineState.hasError
-        ? null
-        : mineState.value;
+    final mine = mineState.value;
     final partnerState = userId == null
         ? const AsyncData<List<DateTime>>([])
         : ref.watch(partnerDeletionDatesProvider(userId));
-    final partner = partnerState.isLoading || partnerState.hasError
-        ? const <DateTime>[]
-        : partnerState.value ?? const <DateTime>[];
+    final partner = partnerState.value ?? const <DateTime>[];
     String date(DateTime d) => '${d.month}월 ${d.day}일';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,

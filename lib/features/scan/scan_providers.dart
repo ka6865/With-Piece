@@ -45,57 +45,119 @@ final scanSyncProvider = Provider<ScanSync>(
 
 // 사귄 날이 바뀌면(상대가 바꿔도) currentCoupleProvider가 다시 읽혀 다시 맞춘다
 final photoDaysSyncedProvider = FutureProvider<void>((ref) async {
-  final couple = await ref.watch(currentCoupleProvider.future);
-  final userId = ref.watch(sessionProvider).value?.user.id;
+  final userId = ref.watch(sessionUserIdProvider);
+  final coupleFuture = ref.watch(currentCoupleProvider.future);
+  if (userId == null) return;
+  var cancelled = false;
+  ref.onDispose(() => cancelled = true);
+  final couple = await coupleFuture;
   final startedOn = couple?.startedOn;
-  if (couple == null || startedOn == null || userId == null) return;
-  final snapshot = await ref.watch(scanSnapshotProvider.future);
-  (await ref
-          .watch(scanSyncProvider)
-          .sync(snapshot, startedOn, userId: userId, coupleId: couple.id))
-      .valueOrThrow;
+  if (couple == null || startedOn == null || cancelled) return;
+  final sync = ref.watch(scanSyncProvider);
+  final snapshotFuture = ref.watch(scanSnapshotProvider.future);
+  final snapshot = await snapshotFuture;
+  if (cancelled || !ref.mounted || ref.read(sessionUserIdProvider) != userId) {
+    return;
+  }
+  final latest = ref.read(currentCoupleProvider).unwrapPrevious().value;
+  if (latest?.id != couple.id || latest?.startedOn != startedOn) return;
+  (await sync.sync(
+    snapshot,
+    startedOn,
+    userId: userId,
+    coupleId: couple.id,
+  )).valueOrThrow;
 });
 
 final matchedDaysProvider = FutureProvider<List<PhotoDay>>((ref) async {
-  await ref.watch(photoDaysSyncedProvider.future);
-  return (await ref.watch(tripRepositoryProvider).matchedDays()).valueOrThrow;
+  final userId = ref.watch(sessionUserIdProvider);
+  final synced = ref.watch(photoDaysSyncedProvider.future);
+  if (userId == null) return const [];
+  final repository = ref.watch(tripRepositoryProvider);
+  await synced;
+  if (!ref.mounted) return const [];
+  return (await repository.matchedDays()).valueOrThrow;
 });
 
-Future<String?> _coupleId(Ref ref) async =>
-    (await ref.watch(currentCoupleProvider.future))?.id;
+Future<String?> _coupleId(Ref ref) async {
+  final userId = ref.watch(sessionUserIdProvider);
+  final coupleFuture = ref.watch(currentCoupleProvider.future);
+  if (userId == null) return null;
+  return (await coupleFuture)?.id;
+}
 
 final tripsProvider = FutureProvider<List<Trip>>((ref) async {
-  final coupleId = await _coupleId(ref);
-  if (coupleId == null) return const [];
-  return (await ref.watch(tripRepositoryProvider).trips(coupleId)).valueOrThrow;
+  final coupleFuture = _coupleId(ref);
+  final repository = ref.watch(tripRepositoryProvider);
+  final coupleId = await coupleFuture;
+  if (coupleId == null || !ref.mounted) return const [];
+  return (await repository.trips(coupleId)).valueOrThrow;
 });
 
 final overridesProvider = FutureProvider<Map<String, OverrideKind>>((
   ref,
 ) async {
-  final coupleId = await _coupleId(ref);
-  if (coupleId == null) return const {};
-  return (await ref.watch(tripRepositoryProvider).overrides(coupleId))
-      .valueOrThrow;
+  final coupleFuture = _coupleId(ref);
+  final repository = ref.watch(tripRepositoryProvider);
+  final coupleId = await coupleFuture;
+  if (coupleId == null || !ref.mounted) return const {};
+  return (await repository.overrides(coupleId)).valueOrThrow;
 });
 
-final homeRegionIdsProvider = FutureProvider<Set<String>>(
-  (ref) async => homeRegions(
-    await ref.watch(matchedDaysProvider.future),
-    await ref.watch(overridesProvider.future),
-  ),
-);
+final homeRegionIdsProvider = FutureProvider<Set<String>>((ref) async {
+  ref.watch(sessionUserIdProvider);
+  final days = ref.watch(matchedDaysProvider.future);
+  final overrides = ref.watch(overridesProvider.future);
+  return homeRegions(await days, await overrides);
+});
+
+// family가 바뀌면 이전 계정·커플의 AsyncValue를 이어받지 않는다.
+final scopedTripsProvider = FutureProvider.autoDispose
+    .family<List<Trip>, CoupleScope>((ref, scope) {
+      if (ref.watch(currentCoupleScopeProvider) != scope) return const [];
+      return ref.watch(tripsProvider.future);
+    });
+
+final scopedHomeRegionIdsProvider = FutureProvider.autoDispose
+    .family<Set<String>, CoupleScope>((ref, scope) {
+      if (ref.watch(currentCoupleScopeProvider) != scope) return const {};
+      return ref.watch(homeRegionIdsProvider.future);
+    });
 
 final regionNamesProvider = FutureProvider<Map<String, String>>((ref) async {
   final asset = await ref.watch(regionMapAssetProvider.future);
   return {for (final f in asset.features) f.id: f.name};
 });
 
-final tripCandidatesProvider = FutureProvider<List<TripCandidate>>(
-  (ref) async => tripCandidates(
-    await ref.watch(matchedDaysProvider.future),
-    home: await ref.watch(homeRegionIdsProvider.future),
-    existing: [for (final t in await ref.watch(tripsProvider.future)) t.range],
-    regionNames: await ref.watch(regionNamesProvider.future),
+final tripCandidatesProvider = FutureProvider<List<TripCandidate>>((ref) async {
+  final scope = ref.watch(currentCoupleScopeProvider);
+  if (scope == null) return const [];
+  final days = ref.watch(matchedDaysProvider.future);
+  final home = ref.watch(scopedHomeRegionIdsProvider(scope).future);
+  final trips = ref.watch(scopedTripsProvider(scope).future);
+  final names = ref.watch(regionNamesProvider.future);
+  return tripCandidates(
+    await days,
+    home: await home,
+    existing: [for (final t in await trips) t.range],
+    regionNames: await names,
+  );
+});
+
+// 로딩 중인 커플도 계정 키를 가지므로 이전 사용자의 후보를 이어받지 않는다.
+typedef CandidateScope = ({String? userId, String? coupleId});
+final candidateScopeProvider = Provider<CandidateScope>(
+  (ref) => (
+    userId: ref.watch(sessionUserIdProvider),
+    coupleId: ref.watch(currentCoupleScopeProvider)?.coupleId,
   ),
+);
+final _candidatesForScopeProvider = FutureProvider.autoDispose
+    .family<List<TripCandidate>, CandidateScope>((ref, scope) {
+      if (ref.watch(candidateScopeProvider) != scope) return const [];
+      return ref.watch(tripCandidatesProvider.future);
+    });
+final scopedTripCandidatesProvider = Provider<AsyncValue<List<TripCandidate>>>(
+  (ref) =>
+      ref.watch(_candidatesForScopeProvider(ref.watch(candidateScopeProvider))),
 );
