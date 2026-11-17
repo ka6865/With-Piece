@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -99,4 +101,41 @@ void main() {
       );
     });
   }
+
+  testWidgets('계정이 바뀌면 새 후보를 받기 전에 이전 계정의 후보를 보이지 않는다', (tester) async {
+    final scope = NotifierProvider<_Scope, CandidateScope>(_Scope.new);
+    final pending = Completer<List<TripCandidate>>();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          candidateScopeProvider.overrideWith((ref) => ref.watch(scope)),
+          tripCandidatesProvider.overrideWith((ref) async {
+            if (ref.watch(scope).userId == 'b') return pending.future;
+            return [
+              TripCandidate(
+                range: DateRange(DateTime(2026, 1, 1), DateTime(2026, 1, 1)),
+                regionIds: const ['32060'],
+                title: '속초시',
+              ),
+            ];
+          }),
+        ],
+        child: const MaterialApp(home: Scaffold(body: TripDiscoveryBanner())),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('함께 간 여행 1개를 찾았어요'), findsOneWidget);
+    ProviderScope.containerOf(
+      tester.element(find.byType(TripDiscoveryBanner)),
+    ).read(scope.notifier).set((userId: 'b', coupleId: 'c2'));
+    await tester.pump();
+    expect(find.text('함께 간 여행 1개를 찾았어요'), findsNothing);
+    pending.complete([]);
+  });
+}
+
+class _Scope extends Notifier<CandidateScope> {
+  @override
+  CandidateScope build() => (userId: 'a', coupleId: 'c1');
+  void set(CandidateScope next) => state = next;
 }

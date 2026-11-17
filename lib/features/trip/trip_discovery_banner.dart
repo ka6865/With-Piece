@@ -21,10 +21,12 @@ class _TripDiscoveryBannerState extends ConsumerState<TripDiscoveryBanner> {
 
   @override
   Widget build(BuildContext context) {
-    final candidates = ref.watch(tripCandidatesProvider);
+    // 후보는 계정·커플 범위로 읽어 이전 계정 값을 잇지 않는다
+    final found = ref.watch(scopedTripCandidatesProvider).value;
+    // 범위 래퍼는 재시도 중 오류를 넘기지 않는다. 권한은 기기 단위라 원본에서 읽는다.
     // Riverpod 3는 실패한 provider를 자동으로 다시 시도하고, 그동안 상태는
-    // 오류를 품은 로딩이다. 상태 종류가 아니라 품은 값과 오류로 판단한다
-    final found = candidates.value;
+    // 오류를 품은 로딩이다. 상태 종류가 아니라 품은 오류로 판단한다
+    final candidates = ref.watch(tripCandidatesProvider);
     if (found != null && found.isNotEmpty) {
       return _Banner(
         message: '함께 간 여행 ${found.length}개를 찾았어요',
