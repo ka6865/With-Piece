@@ -1,0 +1,67 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# The .vscode folder contains launch configuration and tasks you configure in
+# VS Code which you may wish to be included in version control, so this line
+# is commented out by default.
+#.vscode/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+/coverage/
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release
+
+# 로컬 접속 정보. 예시만 커밋한다
+env/*.json
+!env/example.json
+
+# 비밀값. supabase/.gitignore에도 있지만 어느 폴더에 두든 막는다
+.env
+.env.*
+!.env.example
+
+# 서명·인증 파일(Apple 로그인 .p8, 인증서, 프로비저닝, Android 키스토어)
+*.p8
+*.p12
+*.cer
+*.mobileprovision
+*.keystore
+*.jks
+android/key.properties
+
+# 내부 설계 문서·계획서(공개 저장소에 올리지 않음). 로컬에만 둔다
+docs/superpowers/
+docs/원본_기술문서_텍스트.txt

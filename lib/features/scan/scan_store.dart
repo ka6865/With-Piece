@@ -1,0 +1,67 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
+
+import 'photo_days.dart';
+
+class ScanSnapshot {
+  const ScanSnapshot(this.days, this.scannedAt);
+
+  static const empty = ScanSnapshot({}, null);
+
+  // 사귄 날과 무관한 전체 결과. 기기 밖으로 나가지 않는다(설계 5.1)
+  final Map<PhotoDay, int> days;
+  final DateTime? scannedAt;
+
+  ScanSnapshot merge(Map<PhotoDay, int> increment, DateTime scannedAt) {
+    final merged = {...days};
+    increment.forEach((day, count) => merged[day] = (merged[day] ?? 0) + count);
+    return ScanSnapshot(merged, scannedAt);
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is ScanSnapshot &&
+      other.scannedAt == scannedAt &&
+      mapEquals(other.days, days);
+
+  @override
+  int get hashCode => Object.hash(scannedAt, days.length);
+}
+
+// 스캔 결과와 마지막 스캔 시각을 파일 하나에 두어 한 번에 바꾼다.
+// 따로 두면 둘 중 하나만 저장된 채 앱이 꺼질 수 있다
+class ScanStore {
+  ScanStore(this.directory);
+
+  final Directory directory;
+
+  File get _file => File('${directory.path}/photo_days.json');
+
+  Future<ScanSnapshot> read() async {
+    if (!await _file.exists()) return ScanSnapshot.empty;
+    final json = jsonDecode(await _file.readAsString()) as Map<String, dynamic>;
+    return ScanSnapshot({
+      for (final row in json['days'] as List)
+        PhotoDay(DateTime.parse(row[0] as String), row[1] as String):
+            row[2] as int,
+    }, DateTime.parse(json['scannedAt'] as String));
+  }
+
+  // 임시 파일에 쓴 뒤 rename으로 바꿔 쓰기 도중 종료돼도 이전 내용이 남는다
+  Future<void> write(ScanSnapshot snapshot) async {
+    final tmp = File('${_file.path}.tmp');
+    await tmp.writeAsString(
+      jsonEncode({
+        'scannedAt': snapshot.scannedAt!.toIso8601String(),
+        'days': [
+          for (final MapEntry(key: day, value: count) in snapshot.days.entries)
+            [day.day.toIso8601String().substring(0, 10), day.regionId, count],
+        ],
+      }),
+      flush: true,
+    );
+    await tmp.rename(_file.path);
+  }
+}

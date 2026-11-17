@@ -1,0 +1,210 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+
+import 'puzzle_layout.dart';
+
+class PuzzlePainter extends CustomPainter {
+  const PuzzlePainter({
+    required this.layout,
+    required this.visitedRegionIds,
+    required this.regionNames,
+    required this.colorScheme,
+    this.homeRegionIds = const {},
+    this.showSea = false,
+  });
+
+  static const hatchGap = 6.0;
+  static const dashLength = 4.0;
+  static const gapLength = 3.0;
+
+  final PuzzleLayout layout;
+  final Set<String> visitedRegionIds;
+  // 생활권. 칠해졌지만 여행 조각과 빗금으로 구분한다(설계 5.3, 14장)
+  final Set<String> homeRegionIds;
+  final Map<String, String> regionNames;
+  final ColorScheme colorScheme;
+  // 전국 화면만 바다를 칠한다. 시도 화면의 조각 바깥은 이웃 시도다
+  final bool showSea;
+
+  static Path buildPath(ScaledPolygon polygon) {
+    final path = Path()..fillType = PathFillType.evenOdd;
+    for (final ring in polygon.rings) {
+      path.moveTo(ring.first.dx, ring.first.dy);
+      for (final point in ring.skip(1)) {
+        path.lineTo(point.dx, point.dy);
+      }
+      path.close();
+    }
+    return path;
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final visitedFill = Paint()..color = colorScheme.primaryContainer;
+    // 미방문 조각도 옅게 채워 윤곽이 배경에 묻히지 않게 한다
+    final emptyFill = Paint()..color = colorScheme.surfaceContainerHighest;
+    final border = Paint()
+      ..color = colorScheme.outline
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1;
+    if (showSea) {
+      canvas.drawRect(
+        Offset.zero & size,
+        Paint()..color = seaColor(colorScheme),
+      );
+    }
+    for (final rect in layout.insetRects.values) {
+      canvas.drawRect(rect, border);
+    }
+    final hatch = Paint()
+      ..color = colorScheme.tertiary
+      ..strokeWidth = 1;
+    for (final polygon in layout.polygons) {
+      final path = buildPath(polygon);
+      final home = homeRegionIds.contains(polygon.regionId);
+      final visited = home || visitedRegionIds.contains(polygon.regionId);
+      canvas.drawPath(path, visited ? visitedFill : emptyFill);
+      if (home) _drawHatch(canvas, path, polygon.bounds, hatch);
+      // 채움 여부를 색만으로 구분하지 않도록 미방문 조각은 점선으로 그린다
+      canvas.drawPath(visited ? path : dashed(path), border);
+    }
+  }
+
+  static void _drawHatch(Canvas canvas, Path path, Rect bounds, Paint paint) {
+    canvas.save();
+    canvas.clipPath(path);
+    for (var x = bounds.left - bounds.height; x < bounds.right; x += hatchGap) {
+      canvas.drawLine(
+        Offset(x, bounds.bottom),
+        Offset(x + bounds.height, bounds.top),
+        paint,
+      );
+    }
+    canvas.restore();
+  }
+
+  // 테마 표면색에 파랑을 섞어 밝은 테마는 옅은 하늘색, 어두운 테마는 남색이 된다
+  static Color seaColor(ColorScheme colorScheme) => Color.alphaBlend(
+    Colors.blue.withValues(alpha: 0.07),
+    colorScheme.surface,
+  );
+
+  static Path dashed(Path source) {
+    final result = Path();
+    for (final metric in source.computeMetrics()) {
+      for (var d = 0.0; d < metric.length; d += dashLength + gapLength) {
+        result.addPath(metric.extractPath(d, d + dashLength), Offset.zero);
+      }
+    }
+    return result;
+  }
+
+  @override
+  bool shouldRepaint(PuzzlePainter oldDelegate) =>
+      oldDelegate.layout != layout ||
+      oldDelegate.visitedRegionIds != visitedRegionIds ||
+      oldDelegate.homeRegionIds != homeRegionIds ||
+      oldDelegate.regionNames != regionNames ||
+      oldDelegate.colorScheme != colorScheme ||
+      oldDelegate.showSea != showSea;
+
+  @override
+  bool shouldRebuildSemantics(PuzzlePainter oldDelegate) =>
+      oldDelegate.layout != layout ||
+      oldDelegate.visitedRegionIds != visitedRegionIds ||
+      oldDelegate.homeRegionIds != homeRegionIds ||
+      oldDelegate.regionNames != regionNames;
+
+  @override
+  SemanticsBuilderCallback get semanticsBuilder => (size) {
+    final boundsByRegion = <String, Rect>{};
+    for (final polygon in layout.polygons) {
+      boundsByRegion.update(
+        polygon.regionId,
+        (rect) => rect.expandToInclude(polygon.bounds),
+        ifAbsent: () => polygon.bounds,
+      );
+    }
+    return [
+      for (final entry in boundsByRegion.entries)
+        CustomPainterSemantics(
+          rect: entry.value,
+          properties: SemanticsProperties(
+            label:
+                '${regionNames[entry.key]}, '
+                '${homeRegionIds.contains(entry.key)
+                    ? '생활권'
+                    : visitedRegionIds.contains(entry.key)
+                    ? '방문'
+                    : '미방문'}',
+            button: true,
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+    ];
+  };
+}
+
+// 시도명 약칭 규칙(설계 문서 4.5). 시군구 이름은 이 규칙에 걸리지 않아 그대로 남는다
+String shortRegionName(String name) {
+  if (name.endsWith('북도') || name.endsWith('남도')) {
+    return '${name[0]}${name[name.length - 2]}';
+  }
+  for (final suffix in ['특별자치시', '특별자치도', '특별시', '광역시', '도']) {
+    if (name.endsWith(suffix)) {
+      return name.substring(0, name.length - suffix.length);
+    }
+  }
+  return name;
+}
+
+// 지역명과 인셋 캡션. 지도와 따로 그려 확대할 때 이 레이어만 다시 그리고,
+// 글자 크기를 배율로 나눠 화면에서는 같은 크기로 보이게 한다
+class MapLabelPainter extends CustomPainter {
+  const MapLabelPainter({
+    required this.layout,
+    required this.regionNames,
+    required this.colorScheme,
+    required this.zoom,
+  });
+
+  static const screenFontSize = 10.0;
+  static const insetCaptions = {'ulleung': '울릉도', 'dokdo': '독도'};
+
+  final PuzzleLayout layout;
+  final Map<String, String> regionNames;
+  final ColorScheme colorScheme;
+  final double zoom;
+
+  double get fontSize => screenFontSize / zoom;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final style = TextStyle(
+      fontSize: fontSize,
+      color: colorScheme.onSurfaceVariant,
+    );
+    TextPainter textOf(String value) => TextPainter(
+      text: TextSpan(text: value, style: style),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    for (final MapEntry(key: id, value: point) in layout.labelPoints.entries) {
+      final name = regionNames[id];
+      if (name == null) continue;
+      final text = textOf(shortRegionName(name));
+      text.paint(canvas, point - Offset(text.width / 2, text.height / 2));
+    }
+    for (final MapEntry(key: id, value: rect) in layout.insetRects.entries) {
+      final caption = insetCaptions[id];
+      if (caption == null) continue;
+      textOf(caption).paint(canvas, rect.topLeft + const Offset(3, 2) / zoom);
+    }
+  }
+
+  @override
+  bool shouldRepaint(MapLabelPainter oldDelegate) =>
+      oldDelegate.layout != layout ||
+      oldDelegate.regionNames != regionNames ||
+      oldDelegate.colorScheme != colorScheme ||
+      oldDelegate.zoom != zoom;
+}

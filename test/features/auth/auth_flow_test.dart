@@ -1,0 +1,120 @@
+import 'dart:io';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:woori_piece/app/app.dart';
+import 'package:woori_piece/app/router.dart';
+import 'package:woori_piece/data/repositories/repository_providers.dart';
+import 'package:woori_piece/features/auth/auth_state.dart';
+import 'package:woori_piece/map_data/map_asset.dart';
+import 'package:woori_piece/map_data/map_asset_loader.dart';
+
+import 'fakes.dart';
+
+// 테스트에서 단계를 바꿀 수 있게 한다
+class StageController extends Notifier<AppStage> {
+  StageController(this.initial);
+
+  final AppStage initial;
+
+  @override
+  AppStage build() => initial;
+
+  void set(AppStage stage) => state = stage;
+}
+
+final provinces = MapAsset.parse(
+  File('assets/map/provinces_v1.json').readAsStringSync(),
+);
+final regions = MapAsset.parse(
+  File('assets/map/regions_v1.json').readAsStringSync(),
+);
+
+Future<ProviderContainer> pumpApp(
+  WidgetTester tester, {
+  required AppStage stage,
+  String location = '/',
+  FakeAuthRepository? auth,
+}) async {
+  final controller = NotifierProvider<StageController, AppStage>(
+    () => StageController(stage),
+  );
+  final container = ProviderContainer(
+    overrides: [
+      appStageProvider.overrideWith((ref) => ref.watch(controller)),
+      initialLocationProvider.overrideWithValue(location),
+      authRepositoryProvider.overrideWithValue(auth ?? FakeAuthRepository()),
+      coupleRepositoryProvider.overrideWithValue(FakeCoupleRepository()),
+      provinceMapAssetProvider.overrideWith((ref) => provinces),
+      regionMapAssetProvider.overrideWith((ref) => regions),
+    ],
+  );
+  addTearDown(container.dispose);
+  await tester.pumpWidget(
+    UncontrolledProviderScope(
+      container: container,
+      child: const WooriPieceApp(),
+    ),
+  );
+  await tester.pumpAndSettle();
+  stageOf = (s) => container.read(controller.notifier).set(s);
+  return container;
+}
+
+late void Function(AppStage) stageOf;
+
+void main() {
+  testWidgets('세션이 없으면 로그인 화면', (tester) async {
+    await pumpApp(tester, stage: AppStage.signedOut);
+    expect(find.text('카카오로 시작하기'), findsOneWidget);
+  });
+
+  testWidgets('커플이 없으면 초대 화면', (tester) async {
+    await pumpApp(tester, stage: AppStage.needsCouple);
+    expect(find.text('연인과 연결하기'), findsOneWidget);
+  });
+
+  testWidgets('사귄 날이 없으면 사귄 날 화면', (tester) async {
+    await pumpApp(tester, stage: AppStage.needsStartedOn);
+    expect(find.text('언제부터 함께였나요?'), findsOneWidget);
+  });
+
+  testWidgets('모두 갖추면 지도', (tester) async {
+    await pumpApp(tester, stage: AppStage.ready, location: '/login');
+    expect(find.text('우리들의 조각'), findsOneWidget);
+  });
+
+  testWidgets('로그인 전에 받은 초대 코드를 로그인 뒤 입력칸에 채운다', (tester) async {
+    await pumpApp(
+      tester,
+      stage: AppStage.signedOut,
+      location: '/invite?code=ABCDEFGHJK',
+    );
+    expect(find.text('카카오로 시작하기'), findsOneWidget);
+    stageOf(AppStage.needsCouple);
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(TextField, 'ABCDEFGHJK'), findsOneWidget);
+  });
+
+  testWidgets('커플이 없는 화면은 다른 로그인 방법을 안내하고 로그아웃할 수 있다', (tester) async {
+    final auth = FakeAuthRepository();
+    await pumpApp(tester, stage: AppStage.needsCouple, auth: auth);
+    expect(find.textContaining('다른 방법으로 로그인했을 수 있어요'), findsOneWidget);
+    await tester.tap(find.text('로그아웃'));
+    await tester.pump();
+    expect(auth.signOutCalls, 1);
+  });
+
+  testWidgets('신원이 하나뿐이면 연결 해제 버튼이 비활성이다', (tester) async {
+    await pumpApp(
+      tester,
+      stage: AppStage.ready,
+      location: '/settings/accounts',
+    );
+    final button = tester.widget<TextButton>(
+      find.widgetWithText(TextButton, '연결 해제'),
+    );
+    expect(button.onPressed, isNull);
+  });
+}
