@@ -57,7 +57,7 @@ Future<void> main() async {
       )).valueOrThrow;
       final inserted = Completer<void>();
       final deleted = Completer<void>();
-      final subscribed = Completer<void>();
+      final replicationReady = Completer<void>();
       final channel = b.channel('realtime-test-$tripId')
         ..onPostgresChanges(
           event: PostgresChangeEvent.all,
@@ -79,14 +79,22 @@ Future<void> main() async {
             }
           },
         );
-      channel.subscribe((status, [error]) {
-        if (status == RealtimeSubscribeStatus.subscribed &&
-            !subscribed.isCompleted) {
-          subscribed.complete();
+      // 채널 가입 응답 뒤에 PostgreSQL 구독이 따로 준비된다.
+      channel.onSystemEvents((payload) {
+        if (payload is Map &&
+            payload['extension'] == 'postgres_changes' &&
+            payload['status'] == 'ok' &&
+            !replicationReady.isCompleted) {
+          replicationReady.complete();
         }
       });
+      RealtimeSubscribeStatus? lastStatus;
+      channel.subscribe((status, [_]) => lastStatus = status);
       addTearDown(() => b.removeChannel(channel));
-      await subscribed.future.timeout(const Duration(seconds: 10));
+      await replicationReady.future.timeout(
+        const Duration(seconds: 10),
+        onTimeout: () => fail('사진 변경 구독이 준비되지 않았어요 ($lastStatus)'),
+      );
       final id =
           (await a
                   .from('photos')
@@ -101,9 +109,15 @@ Future<void> main() async {
                   .select('id')
                   .single())['id']
               as String;
-      await inserted.future.timeout(const Duration(seconds: 10));
+      await inserted.future.timeout(
+        const Duration(seconds: 10),
+        onTimeout: () => fail('사진 추가 이벤트를 받지 못했어요 ($lastStatus)'),
+      );
       await a.from('photos').delete().eq('id', id);
-      await deleted.future.timeout(const Duration(seconds: 10));
+      await deleted.future.timeout(
+        const Duration(seconds: 10),
+        onTimeout: () => fail('사진 삭제 이벤트를 받지 못했어요 ($lastStatus)'),
+      );
     },
     skip: skip,
     timeout: const Timeout(Duration(seconds: 45)),
