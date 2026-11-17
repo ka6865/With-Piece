@@ -13,7 +13,7 @@ class CountingRepo extends PhotoDayRepository {
   final calls = <Map<PhotoDay, int>>[];
 
   @override
-  Future<Result<void>> replaceAll(Map<PhotoDay, int> days) async {
+  Future<Result<void>> sync(String coupleId, Map<PhotoDay, int> days) async {
     calls.add(days);
     return const Ok(null);
   }

@@ -5,12 +5,34 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:woori_piece/core/result/result.dart';
 import 'package:woori_piece/core/supabase/supabase_providers.dart';
 import 'package:woori_piece/features/scan/photo_days.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:woori_piece/data/repositories/couple_repository.dart';
+import 'package:woori_piece/data/repositories/photo_sharing_repository.dart';
+import 'package:woori_piece/features/auth/auth_state.dart';
+import 'package:woori_piece/features/scan/scan_providers.dart';
+import 'package:woori_piece/features/scan/scan_store.dart';
 import 'package:woori_piece/features/scan/photo_sharing_page.dart';
+
+class _SharingRepo extends PhotoSharingRepository {
+  _SharingRepo(this.days)
+    : super(
+        SupabaseClient(
+          'http://127.0.0.1:1',
+          'test',
+          authOptions: const AuthClientOptions(autoRefreshToken: false),
+        ),
+      );
+  final Map<PhotoDay, int> days;
+  @override
+  Future<Result<Map<PhotoDay, int>>> approvedWithCounts(
+    String coupleId,
+  ) async => Ok(Map.of(days));
+}
 
 void main() {
   final day = PhotoDay(DateTime(2026, 10, 3), '32060');
   testWidgets('비교 승인은 기본 미선택이고 안내 후 고른 기록만 저장한다', (tester) async {
-    Set<PhotoDay>? saved;
+    Map<PhotoDay, bool>? saved;
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -41,8 +63,154 @@ void main() {
     await tester.pump();
     await tester.tap(find.text('비교 범위 저장'));
     await tester.pumpAndSettle();
-    expect(saved, {day});
+    expect(saved, {day: true});
   });
+  testWidgets('손대지 않은 기존 승인은 저장 변경 목록에 넣지 않는다', (tester) async {
+    Map<PhotoDay, bool>? saved;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sessionUserIdProvider.overrideWithValue('me'),
+          photoSharingChoicesProvider.overrideWith(
+            (ref) async => PhotoSharingChoices(
+              coupleId: 'c1',
+              days: {day: 3},
+              approved: {day},
+              names: {},
+            ),
+          ),
+          savePhotoSharingProvider.overrideWithValue((coupleId, days) async {
+            saved = days;
+            return const Ok(null);
+          }),
+        ],
+        child: const MaterialApp(home: PhotoSharingPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('비교 범위 저장'));
+    await tester.pumpAndSettle();
+    expect(saved, isEmpty);
+  });
+  testWidgets('새 기기에서도 서버 승인과 사진 수를 표시하고 기준일 이전 승인은 숨긴다', (tester) async {
+    final old = PhotoDay(DateTime(2025, 1, 1), '32060');
+    final repo = _SharingRepo({day: 7, old: 9});
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sessionUserIdProvider.overrideWithValue('me'),
+          currentCoupleProvider.overrideWith(
+            (ref) async => Couple(
+              id: 'c1',
+              partnerId: 'partner',
+              startedOn: DateTime(2026, 1, 1),
+            ),
+          ),
+          photoDaysSyncedProvider.overrideWith((ref) async {}),
+          scanSnapshotProvider.overrideWith(
+            (ref) async => ScanSnapshot({}, DateTime(2026, 11, 1)),
+          ),
+          regionNamesProvider.overrideWith((ref) async => {'32060': '속초시'}),
+          photoSharingRepositoryProvider.overrideWithValue(repo),
+        ],
+        child: const MaterialApp(home: PhotoSharingPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('2026.10.3 · 사진 7장'), findsOneWidget);
+    expect(find.byType(CheckboxListTile), findsOneWidget);
+    expect(
+      tester.widget<CheckboxListTile>(find.byType(CheckboxListTile)).value,
+      true,
+    );
+  });
+
+  for (final success in [true, false]) {
+    testWidgets('저장 중 서버 승인이 바뀌면 성공 때만 임시 변경을 초기화한다: $success', (tester) async {
+      final response = Completer<Result<void>>();
+      var approved = <PhotoDay>{};
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            sessionUserIdProvider.overrideWithValue('me'),
+            photoSharingChoicesProvider.overrideWith(
+              (ref) async => PhotoSharingChoices(
+                coupleId: 'c1',
+                days: {day: 2},
+                approved: approved,
+                names: {'32060': '속초시'},
+              ),
+            ),
+            savePhotoSharingProvider.overrideWithValue(
+              (coupleId, changes) => response.future,
+            ),
+          ],
+          child: const MaterialApp(home: PhotoSharingPage()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('속초시'));
+      await tester.pump();
+      await tester.tap(find.text('비교 범위 저장'));
+      await tester.pump();
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(PhotoSharingPage)),
+      );
+      approved = {};
+      container.invalidate(photoSharingChoicesProvider);
+      await tester.pumpAndSettle();
+      response.complete(success ? const Ok(null) : const Err(AppError.network));
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<CheckboxListTile>(find.byType(CheckboxListTile)).value,
+        !success,
+      );
+    });
+  }
+
+  testWidgets('저장 중 커플이 바뀌면 새 커플에서 저장과 선택이 가능하다', (tester) async {
+    var coupleId = 'c1';
+    final response = Completer<Result<void>>();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sessionUserIdProvider.overrideWithValue('me'),
+          photoSharingChoicesProvider.overrideWith(
+            (ref) async => PhotoSharingChoices(
+              coupleId: coupleId,
+              days: {day: 2},
+              approved: {},
+              names: {'32060': '속초시'},
+            ),
+          ),
+          savePhotoSharingProvider.overrideWithValue(
+            (coupleId, changes) => response.future,
+          ),
+        ],
+        child: const MaterialApp(home: PhotoSharingPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('비교 범위 저장'));
+    await tester.pump();
+    coupleId = 'c2';
+    ProviderScope.containerOf(
+      tester.element(find.byType(PhotoSharingPage)),
+    ).invalidate(photoSharingChoicesProvider);
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
+      isNotNull,
+    );
+    expect(
+      tester.widget<CheckboxListTile>(find.byType(CheckboxListTile)).onChanged,
+      isNotNull,
+    );
+    response.complete(const Err(AppError.network));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('저장하지 못했어요'), findsNothing);
+  });
+
   testWidgets('전체 승인을 기본으로 두지 않고 기존 승인만 복원한다', (tester) async {
     await tester.pumpWidget(
       ProviderScope(

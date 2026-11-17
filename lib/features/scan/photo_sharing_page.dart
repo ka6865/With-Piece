@@ -33,25 +33,40 @@ final photoSharingChoicesProvider = FutureProvider<PhotoSharingChoices>((
   if (couple == null || couple.startedOn == null) throw AppError.validation;
   await ref.watch(photoDaysSyncedProvider.future);
   final snapshot = await ref.watch(scanSnapshotProvider.future);
+  final approved =
+      (await ref
+              .watch(photoSharingRepositoryProvider)
+              .approvedWithCounts(couple.id))
+          .valueOrThrow;
+  approved.removeWhere((day, _) => day.day.isBefore(couple.startedOn!));
   return PhotoSharingChoices(
     coupleId: couple.id,
     days: {
+      ...approved,
       for (final entry in snapshot.days.entries)
         if (!entry.key.day.isBefore(couple.startedOn!)) entry.key: entry.value,
     },
-    approved:
-        (await ref.watch(photoSharingRepositoryProvider).approved(couple.id))
-            .valueOrThrow,
+    approved: approved.keys.toSet(),
     names: await ref.watch(regionNamesProvider.future),
   );
 });
 
 final savePhotoSharingProvider =
-    Provider<Future<Result<void>> Function(String, Set<PhotoDay>)>(
-      (ref) => (coupleId, days) async {
+    Provider<Future<Result<void>> Function(String, Map<PhotoDay, bool>)>(
+      (ref) => (coupleId, changes) async {
         final result = await ref
             .read(photoSharingRepositoryProvider)
-            .replace(coupleId, days);
+            .update(
+              coupleId,
+              approve: {
+                for (final entry in changes.entries)
+                  if (entry.value) entry.key,
+              },
+              revoke: {
+                for (final entry in changes.entries)
+                  if (!entry.value) entry.key,
+              },
+            );
         if (result is Ok) {
           ref.invalidate(photoSharingChoicesProvider);
           ref.invalidate(matchedDaysProvider);
@@ -68,7 +83,7 @@ class PhotoSharingPage extends ConsumerStatefulWidget {
 }
 
 class _PhotoSharingPageState extends ConsumerState<PhotoSharingPage> {
-  Set<PhotoDay>? _selected;
+  final _changes = <PhotoDay, bool>{};
   String? _coupleId;
   String? _userId;
   bool _saving = false;
@@ -79,14 +94,17 @@ class _PhotoSharingPageState extends ConsumerState<PhotoSharingPage> {
     final userId = ref.watch(sessionUserIdProvider);
     if (_userId != userId) {
       _userId = userId;
-      _selected = null;
+      _changes.clear();
+      _saving = false;
       _error = null;
     }
     final choices = ref.watch(photoSharingChoicesProvider);
     final data = choices.isLoading || choices.hasError ? null : choices.value;
-    if (data != null && (_selected == null || _coupleId != data.coupleId)) {
+    if (data != null && _coupleId != data.coupleId) {
       _coupleId = data.coupleId;
-      _selected = data.approved.intersection(data.days.keys.toSet());
+      _changes.clear();
+      _saving = false;
+      _error = null;
     }
     final days = data?.days.keys.toList() ?? <PhotoDay>[];
     days.sort((a, b) {
@@ -135,7 +153,7 @@ class _PhotoSharingPageState extends ConsumerState<PhotoSharingPage> {
                       itemBuilder: (context, index) {
                         final day = days[index];
                         return CheckboxListTile(
-                          value: _selected!.contains(day),
+                          value: _changes[day] ?? data.approved.contains(day),
                           title: Text(data.names[day.regionId] ?? day.regionId),
                           subtitle: Text(
                             '${day.day.year}.${day.day.month}.${day.day.day} · 사진 ${data.days[day]}장',
@@ -143,9 +161,8 @@ class _PhotoSharingPageState extends ConsumerState<PhotoSharingPage> {
                           onChanged: _saving
                               ? null
                               : (checked) => setState(() {
-                                  checked == true
-                                      ? _selected!.add(day)
-                                      : _selected!.remove(day);
+                                  final selected = checked == true;
+                                  _changes[day] = selected;
                                 }),
                         );
                       },
@@ -168,8 +185,12 @@ class _PhotoSharingPageState extends ConsumerState<PhotoSharingPage> {
                           });
                           final result = await ref.read(
                             savePhotoSharingProvider,
-                          )(data.coupleId, Set.of(_selected!));
-                          if (!context.mounted) return;
+                          )(data.coupleId, Map.of(_changes));
+                          if (!context.mounted ||
+                              _userId != userId ||
+                              _coupleId != data.coupleId) {
+                            return;
+                          }
                           setState(() {
                             _saving = false;
                           });
@@ -180,6 +201,9 @@ class _PhotoSharingPageState extends ConsumerState<PhotoSharingPage> {
                             );
                             return;
                           }
+                          setState(() {
+                            _changes.clear();
+                          });
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(content: Text('비교할 기록을 저장했어요')),
                           );

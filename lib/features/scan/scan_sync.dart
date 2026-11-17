@@ -26,7 +26,7 @@ class ScanSync {
         '$userId|$coupleId|${startedOn.toIso8601String()}|${snapshot.scannedAt?.toIso8601String()}';
     final storageKey = '$_syncedKey:$userId';
     if (_prefs.getString(storageKey) == key) return const Ok(null);
-    final result = await _repository.replaceAll({
+    final result = await _repository.sync(coupleId, {
       for (final MapEntry(key: day, value: count) in snapshot.days.entries)
         if (!day.day.isBefore(startedOn)) day: count,
     });

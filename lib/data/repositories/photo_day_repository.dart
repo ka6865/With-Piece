@@ -25,6 +25,23 @@ class PhotoDayRepository {
     ),
   );
 
+  Future<Result<void>> sync(String coupleId, Map<PhotoDay, int> days) => guard(
+    () => _client.rpc(
+      'sync_photo_days',
+      params: {
+        'p_couple_id': coupleId,
+        'p_rows': [
+          for (final MapEntry(key: day, value: count) in days.entries)
+            {
+              'day': _date(day.day),
+              'region_id': day.regionId,
+              'photo_count': count,
+            },
+        ],
+      },
+    ),
+  );
+
   Future<Result<Map<PhotoDay, int>>> mine() => guard(() async {
     final rows = await _client
         .from('photo_days')
