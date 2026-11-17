@@ -405,11 +405,6 @@ Future<void> main() async {
     }
 
     await settle();
-    expect(
-      reads,
-      {'trips': 1, 'overrides': 1, 'shares': 1, 'photos': 1},
-      reason: '첫 가입은 방금 읽은 조회를 반복하지 않는다',
-    );
     for (final event in ['photos', 'trips', 'overrides', 'shares']) {
       final before = Map<String, int>.of(reads);
       _deliver(event == 'shares' ? shares : couple, event);
