@@ -16,6 +16,15 @@ Deno.serve(async (req) => {
   }
   const supabase = createClient(Deno.env.get("SUPABASE_URL")!, serviceKey);
 
+  const logFailure = (phase: string, error: unknown, userId?: string) => {
+    const message = String(error && typeof error === "object" && "message" in error
+      ? error.message : error);
+    console.error(JSON.stringify({
+      event: "cleanup_failed", phase, userId,
+      message: message.replaceAll(serviceKey, "[REDACTED]"),
+    }));
+  };
+
   const removeAll = async (paths: string[]) => {
     for (let i = 0; i < paths.length; i += BATCH) {
       const { error } = await supabase.storage.from(BUCKET).remove(paths.slice(i, i + BATCH));
@@ -31,20 +40,25 @@ Deno.serve(async (req) => {
     const purged = await supabase.rpc("purge_expired_users");
     if (purged.error) throw purged.error;
     for (const row of purged.data as { user_id: string; object_paths: string[] }[]) {
+      let phase = "expired_storage";
       try {
         await removeAll(row.object_paths);
+        phase = "expired_finalize";
         const { error: finalizeError } = await supabase.rpc("finalize_expired_user", {
           p_user_id: row.user_id,
         });
         if (finalizeError) throw finalizeError;
+        phase = "expired_auth";
         const { error } = await supabase.auth.admin.deleteUser(row.user_id);
         if (error) throw error;
         expiredSucceeded++;
-      } catch {
+      } catch (error) {
+        logFailure(phase, error, row.user_id);
         expiredFailed++;
       }
     }
-  } catch {
+  } catch (error) {
+    logFailure("expired_accounts", error);
     failedPhases.push("expired_accounts");
   }
 
@@ -53,14 +67,16 @@ Deno.serve(async (req) => {
     if (orphans.error) throw orphans.error;
     orphanFiles = orphans.data.length;
     await removeAll(orphans.data as string[]);
-  } catch {
+  } catch (error) {
+    logFailure("orphan_cleanup", error);
     failedPhases.push("orphan_cleanup");
   }
 
   try {
     const stale = await supabase.rpc("cleanup_stale");
     if (stale.error) throw stale.error;
-  } catch {
+  } catch (error) {
+    logFailure("stale_cleanup", error);
     failedPhases.push("stale_cleanup");
   }
 

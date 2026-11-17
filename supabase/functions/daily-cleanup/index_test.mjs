@@ -9,8 +9,10 @@ const source = stripTypeScriptTypes(await readFile(new URL('./index.ts', import.
   .replace(/^import .*createClient.*;\s*$/m, '');
 
 function handler({ storageFails = false, authFails = false, finalizeFails = false,
-  staleFails = false, accounts = [{ user_id: 'u1', object_paths: ['c1/t1/full/p.heic'] }] } = {}) {
+  staleFails = false, purgeFails = false, orphanFails = false,
+  accounts = [{ user_id: 'u1', object_paths: ['c1/t1/full/p.heic'] }] } = {}) {
   const calls = [];
+  const logs = [];
   let serve;
   const client = {
     rpc: async (name, args) => {
@@ -20,7 +22,11 @@ function handler({ storageFails = false, authFails = false, finalizeFails = fals
         : name === 'orphan_photo_paths' ? ['orphan.heic'] : null,
       error: name === 'finalize_expired_user' && finalizeFails
         ? new Error('finalize unavailable')
-        : name === 'cleanup_stale' && staleFails ? new Error('stale cleanup unavailable') : null };
+        : name === 'cleanup_stale' && staleFails ? new Error('stale cleanup unavailable')
+        : name === 'purge_expired_users' && purgeFails
+          ? { message: typeof purgeFails === 'string' ? purgeFails : 'purge unavailable', details: 'secret' }
+        : name === 'orphan_photo_paths' && orphanFails
+          ? { message: 'orphan unavailable', details: 'secret' } : null };
     },
     storage: { from: () => ({ remove: async (paths) => {
       calls.push(`storage:${paths[0]}`);
@@ -37,8 +43,9 @@ function handler({ storageFails = false, authFails = false, finalizeFails = fals
     Deno: { env: { get: (name) => name === 'SUPABASE_SERVICE_ROLE_KEY' ? 'secret' : 'http://local' },
       serve: (fn) => { serve = fn; } },
     Response,
+    console: { error: (line) => logs.push(JSON.parse(line)) },
   });
-  return { calls, run: (authorized = true) => serve(new Request('http://local', {
+  return { calls, logs, run: (authorized = true) => serve(new Request('http://local', {
     headers: authorized ? { Authorization: 'Bearer secret' } : {},
   })) };
 }
@@ -47,12 +54,14 @@ test('서비스 키가 없으면 데이터에 접근하지 않는다', async () 
   const h = handler();
   assert.equal((await h.run(false)).status, 401);
   assert.deepEqual(h.calls, []);
+  assert.deepEqual(h.logs, []);
 });
 test('파일 삭제 후 DB 정리를 확정하고 Auth를 삭제한다', async () => {
   const h = handler();
   assert.equal((await h.run()).status, 200);
   assert.deepEqual(h.calls, ['purge_expired_users', 'storage:c1/t1/full/p.heic', 'finalize:u1',
     'auth:u1', 'orphan_photo_paths', 'storage:orphan.heic', 'cleanup_stale']);
+  assert.deepEqual(h.logs, []);
 });
 test('파일 삭제가 실패하면 관계와 계정을 지우지 않는다', async () => {
   const h = handler({ storageFails: true });
@@ -93,4 +102,44 @@ test('한 계정의 실패 뒤에도 다음 계정과 orphan 및 stale 정리를
     'storage:c2/t2/full/p.heic', 'finalize:u2', 'auth:u2', 'orphan_photo_paths',
     'storage:orphan.heic', 'cleanup_stale']);
   assert.doesNotMatch(JSON.stringify(result), /u1|u2|unavailable|c1\/|c2\//);
+});
+
+for (const [option, phase, message] of [
+  ['storageFails', 'expired_storage', 'storage unavailable'],
+  ['finalizeFails', 'expired_finalize', 'finalize unavailable'],
+  ['authFails', 'expired_auth', 'auth unavailable'],
+]) {
+  test(`계정별 ${phase} 실패는 사용자와 메시지를 구조화 로그에 남긴다`, async () => {
+    const h = handler({ [option]: true });
+    const response = await h.run();
+    assert.equal(response.status, 500);
+    assert.deepEqual(h.logs[0], { event: 'cleanup_failed', phase, userId: 'u1', message });
+    assert.doesNotMatch(JSON.stringify(h.logs), /secret|c1\/|details/);
+    assert.doesNotMatch(await response.text(), /u1|unavailable|secret/);
+    assert.equal(h.calls.at(-1), 'cleanup_stale');
+  });
+}
+
+test('배치 RPC와 orphan 및 stale 실패를 단계와 메시지로 기록하고 계속 진행한다', async () => {
+  const h = handler({ purgeFails: true, orphanFails: true, staleFails: true });
+  const response = await h.run();
+  assert.equal(response.status, 500);
+  assert.deepEqual(h.logs, [
+    { event: 'cleanup_failed', phase: 'expired_accounts', message: 'purge unavailable' },
+    { event: 'cleanup_failed', phase: 'orphan_cleanup', message: 'orphan unavailable' },
+    { event: 'cleanup_failed', phase: 'stale_cleanup', message: 'stale cleanup unavailable' },
+  ]);
+  assert.deepEqual(h.calls, ['purge_expired_users', 'orphan_photo_paths', 'cleanup_stale']);
+  assert.deepEqual(await response.json(), {
+    error: 'cleanup_failed', expiredAccounts: { succeeded: 0, failed: 0 },
+    failedPhases: ['expired_accounts', 'orphan_cleanup', 'stale_cleanup'],
+  });
+  assert.doesNotMatch(JSON.stringify(h.logs), /secret|details/);
+});
+
+test('오류 메시지에 서비스 키가 포함돼도 로그에는 가린다', async () => {
+  const h = handler({ purgeFails: 'request failed: Bearer secret' });
+  assert.equal((await h.run()).status, 500);
+  assert.equal(h.logs[0].message, 'request failed: Bearer [REDACTED]');
+  assert.doesNotMatch(JSON.stringify(h.logs), /secret/);
 });
