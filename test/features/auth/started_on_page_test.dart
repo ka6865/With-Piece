@@ -310,4 +310,24 @@ void main() {
     await tester.pumpAndSettle();
     expect(couples.startedOnCalls, [DateTime(2019, 1, 1)]);
   });
+
+  testWidgets('저장 전 커플 재조회가 실패하면 저장하지 않고 실패를 알린다', (tester) async {
+    Completer<Couple>? reload;
+    final couples = await pumpPage(
+      tester,
+      loadCouple: (ref) {
+        final couple = ref.watch(dateContextProvider).couple;
+        return reload?.future ?? Future.value(couple);
+      },
+    );
+    reload = Completer<Couple>();
+    ProviderScope.containerOf(
+      tester.element(find.byType(StartedOnPage)),
+    ).invalidate(currentCoupleProvider);
+    await chooseDate(tester, '01/01/2019');
+    reload.completeError(AppError.network);
+    await tester.pumpAndSettle();
+    expect(couples.startedOnCalls, isEmpty);
+    expect(find.text('저장하지 못했어요'), findsOneWidget);
+  });
 }

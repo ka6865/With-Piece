@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/result/result.dart';
 import '../../core/supabase/supabase_providers.dart';
+import '../../data/repositories/couple_repository.dart';
 import '../../data/repositories/repository_providers.dart';
 import 'auth_state.dart';
 
@@ -40,6 +43,31 @@ class StartedOnPage extends ConsumerWidget {
                     (ModalRoute.of(context)?.isCurrent ?? true) &&
                     ref.read(sessionUserIdProvider) == userId &&
                     ref.read(currentCoupleProvider).value?.id == coupleId;
+                void failed() => ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text('저장하지 못했어요')));
+                // Realtime이 커플을 다시 읽는 중이면 끝날 때까지 기다린 값으로 비교한다.
+                // 실패하면 .future는 자동 재시도 동안 끝나지 않으므로 상태를 지켜본다
+                Future<(bool, DateTime?)> latestStartedOn() async {
+                  bool settled(AsyncValue<Couple?> v) =>
+                      !v.isLoading || v.hasError;
+                  var couple = ref.read(currentCoupleProvider);
+                  if (!settled(couple)) {
+                    final done = Completer<AsyncValue<Couple?>>();
+                    final sub = ref.listenManual(currentCoupleProvider, (
+                      _,
+                      next,
+                    ) {
+                      if (settled(next) && !done.isCompleted) {
+                        done.complete(next);
+                      }
+                    });
+                    couple = await done.future;
+                    sub.close();
+                  }
+                  return (!couple.hasError, couple.value?.startedOn);
+                }
+
                 final today = DateTime.now();
                 final date = await showDatePicker(
                   context: context,
@@ -48,10 +76,9 @@ class StartedOnPage extends ConsumerWidget {
                   initialDate: startedOn ?? today,
                 );
                 if (date == null || !context.mounted || !sameScope()) return;
-                // Realtime이 커플을 다시 읽는 중이면 끝날 때까지 기다린 값으로 비교한다
-                final currentDate =
-                    (await ref.read(currentCoupleProvider.future))?.startedOn;
+                final (loaded, currentDate) = await latestStartedOn();
                 if (!context.mounted || !sameScope()) return;
+                if (!loaded) return failed();
                 if (isEditing &&
                     currentDate != null &&
                     date.isAfter(currentDate)) {
@@ -78,9 +105,9 @@ class StartedOnPage extends ConsumerWidget {
                   if (confirmed != true || !context.mounted || !sameScope()) {
                     return;
                   }
-                  final latest =
-                      (await ref.read(currentCoupleProvider.future))?.startedOn;
+                  final (reloaded, latest) = await latestStartedOn();
                   if (!context.mounted || !sameScope()) return;
+                  if (!reloaded) return failed();
                   if (latest != currentDate) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
@@ -94,12 +121,7 @@ class StartedOnPage extends ConsumerWidget {
                     .read(coupleRepositoryProvider)
                     .setStartedOn(date);
                 if (!context.mounted || !sameScope()) return;
-                if (result is Err) {
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(const SnackBar(content: Text('저장하지 못했어요')));
-                  return;
-                }
+                if (result is Err) return failed();
                 ref.invalidate(currentCoupleProvider);
                 if (isEditing) {
                   final router = GoRouter.maybeOf(context);
