@@ -6,13 +6,21 @@ import 'package:photo_manager/photo_manager.dart';
 import '../../core/result/result.dart';
 import '../scan/scan_providers.dart';
 
-// 전국 지도 위에서 새 여행 후보나 사진 권한 안내를 보여준다.
+// 전국 지도 위에서 새 여행 후보, 사진 권한, 닫을 수 있는 비교 승인 안내를 보여준다.
 // 그 밖의 오류(오프라인 등)에서는 지도를 가리지 않도록 아무것도 보이지 않는다
-class TripDiscoveryBanner extends ConsumerWidget {
+class TripDiscoveryBanner extends ConsumerStatefulWidget {
   const TripDiscoveryBanner({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<TripDiscoveryBanner> createState() =>
+      _TripDiscoveryBannerState();
+}
+
+class _TripDiscoveryBannerState extends ConsumerState<TripDiscoveryBanner> {
+  bool _emptyDismissed = false;
+
+  @override
+  Widget build(BuildContext context) {
     final candidates = ref.watch(tripCandidatesProvider);
     // Riverpod 3는 실패한 provider를 자동으로 다시 시도하고, 그동안 상태는
     // 오류를 품은 로딩이다. 상태 종류가 아니라 품은 값과 오류로 판단한다
@@ -32,6 +40,7 @@ class TripDiscoveryBanner extends ConsumerWidget {
       );
     }
     if (found == null) return const SizedBox.shrink();
+    if (_emptyDismissed) return const SizedBox.shrink();
     return Row(
       children: [
         Expanded(
@@ -40,6 +49,11 @@ class TripDiscoveryBanner extends ConsumerWidget {
             action: '기록 선택',
             onPressed: () => context.push('/settings/photo-sharing'),
           ),
+        ),
+        IconButton(
+          tooltip: '안내 닫기',
+          icon: const Icon(Icons.close),
+          onPressed: () => setState(() => _emptyDismissed = true),
         ),
         IconButton(
           tooltip: '함께 간 기록 새로 확인',
