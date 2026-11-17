@@ -61,6 +61,102 @@ void main() {
     expect(find.text('속초시 · 고성군'), findsOneWidget);
   });
 
+  testWidgets('후보 갱신은 유효한 후보를 최신 순서로 보여준다', (tester) async {
+    var current = [
+      candidate(3, 4, ['32060', '32400'], '속초시 고성군 1박 2일'),
+    ];
+    final container = ProviderContainer(
+      overrides: [
+        tripCandidatesProvider.overrideWith((ref) async => current),
+        regionMapAssetProvider.overrideWith((ref) => regions),
+      ],
+    );
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: TripCandidatesPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    current = [
+      candidate(3, 4, ['32060'], '속초시 1박 2일'),
+      candidate(1, 1, ['37020'], '경주시'),
+    ];
+    container.invalidate(tripCandidatesProvider);
+    await tester.pumpAndSettle();
+    expect(find.text('속초시 고성군 1박 2일'), findsNothing);
+    expect(find.text('속초시 1박 2일'), findsOneWidget);
+    expect(find.text('경주시'), findsNWidgets(2));
+    expect(
+      tester.getTopLeft(find.text('속초시 1박 2일')).dy,
+      lessThan(tester.getTopLeft(find.text('경주시').first).dy),
+    );
+    container.dispose();
+  });
+
+  testWidgets('동일한 서버 후보 갱신은 직접 합친 초안을 유지한다', (tester) async {
+    var current = [
+      candidate(5, 5, ['32410'], '양양군'),
+      candidate(3, 3, ['32060'], '속초시'),
+    ];
+    final container = ProviderContainer(
+      overrides: [
+        tripCandidatesProvider.overrideWith((ref) async => current),
+        regionMapAssetProvider.overrideWith((ref) => regions),
+      ],
+    );
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: TripCandidatesPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('이전 후보와 합치기'));
+    await tester.pumpAndSettle();
+    current = [
+      candidate(5, 5, ['32410'], '양양군 새 제목'),
+      candidate(3, 3, ['32060'], '속초시 새 제목'),
+    ];
+    container.invalidate(tripCandidatesProvider);
+    await tester.pumpAndSettle();
+    expect(find.text('속초시 양양군 2박 3일'), findsOneWidget);
+    expect(find.text('속초시 새 제목'), findsNothing);
+    container.dispose();
+  });
+
+  testWidgets('확인 시트가 열린 동안 사라진 후보는 저장하지 않는다', (tester) async {
+    var current = [
+      candidate(3, 4, ['32060'], '속초시 1박 2일'),
+    ];
+    final trips = FakeTripRepository();
+    final container = ProviderContainer(
+      overrides: [
+        tripCandidatesProvider.overrideWith((ref) async => current),
+        tripRepositoryProvider.overrideWithValue(trips),
+        regionMapAssetProvider.overrideWith((ref) => regions),
+      ],
+    );
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: TripCandidatesPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('확인'));
+    await tester.pumpAndSettle();
+    current = [];
+    container.invalidate(tripCandidatesProvider);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('지도에 채우기'));
+    await tester.pumpAndSettle();
+    expect(trips.confirms, isEmpty);
+    expect(find.text('새로 찾은 여행이 없어요'), findsOneWidget);
+    expect(find.text('이 여행 후보가 최신 기록에서 사라져 확인하지 않았어요'), findsOneWidget);
+    container.dispose();
+  });
+
   testWidgets('조각을 빼고 확인하면 바뀐 조각으로 확인된다', (tester) async {
     final trips = await pumpPage(tester, [
       candidate(3, 4, ['32060', '32400'], '속초시 고성군 1박 2일'),

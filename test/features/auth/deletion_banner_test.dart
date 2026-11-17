@@ -9,11 +9,12 @@ import 'package:woori_piece/features/auth/account_state.dart';
 
 class FakeAccountRepository implements AccountRepository {
   int cancels = 0;
+  Result<void> cancelResult = const Ok(null);
 
   @override
   Future<Result<void>> cancelDeletion() async {
     cancels++;
-    return const Ok(null);
+    return cancelResult;
   }
 
   @override
@@ -29,15 +30,23 @@ class FakeAccountRepository implements AccountRepository {
 Future<FakeAccountRepository> pump(
   WidgetTester tester, {
   DateTime? mine,
+  List<DateTime?> mineSequence = const [],
   List<DateTime> partner = const [],
 }) async {
   final repo = FakeAccountRepository();
+  var mineReads = 0;
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         accountRepositoryProvider.overrideWithValue(repo),
         sessionUserIdProvider.overrideWithValue('me'),
-        myDeletionDateProvider('me').overrideWith((ref) async => mine),
+        myDeletionDateProvider('me').overrideWith((ref) async {
+          if (mineSequence.isEmpty) return mine;
+          final index = mineReads++;
+          return mineSequence[index < mineSequence.length
+              ? index
+              : mineSequence.length - 1];
+        }),
         partnerDeletionDatesProvider('me').overrideWith((ref) async => partner),
       ],
       child: const MaterialApp(home: Scaffold(body: DeletionBanners())),
@@ -59,6 +68,21 @@ void main() {
     await tester.tap(find.text('삭제 취소'));
     await tester.pumpAndSettle();
     expect(repo.cancels, 1);
+  });
+
+  testWidgets('삭제 취소 요청 상태가 바뀌면 일정을 다시 조회하고 안내한다', (tester) async {
+    final repo = await pump(
+      tester,
+      mineSequence: [DateTime(2026, 12, 17), null],
+    );
+    repo.cancelResult = const Err(AppError.validation);
+    await tester.tap(find.text('삭제 취소'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('삭제 요청 상태가 바뀌었거나 취소 가능 기간이 끝났어요. 삭제 일정을 다시 확인해 주세요.'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('계정이 삭제돼요'), findsNothing);
   });
 
   testWidgets('요청이 없으면 아무것도 보이지 않는다', (tester) async {

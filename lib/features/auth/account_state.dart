@@ -52,9 +52,32 @@ class DeletionBanners extends ConsumerWidget {
               title: Text('${date(mine)}에 계정이 삭제돼요'),
               trailing: TextButton(
                 onPressed: () async {
-                  await ref.read(accountRepositoryProvider).cancelDeletion();
-                  if (userId case final id?) {
-                    ref.invalidate(myDeletionDateProvider(id));
+                  final result = await ref
+                      .read(accountRepositoryProvider)
+                      .cancelDeletion();
+                  if (!context.mounted) return;
+                  switch (result) {
+                    case Ok():
+                      if (userId case final id?) {
+                        ref.invalidate(myDeletionDateProvider(id));
+                      }
+                    case Err(error: AppError.validation):
+                      if (userId case final id?) {
+                        ref.invalidate(myDeletionDateProvider(id));
+                      }
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            '삭제 요청 상태가 바뀌었거나 취소 가능 기간이 끝났어요. 삭제 일정을 다시 확인해 주세요.',
+                          ),
+                        ),
+                      );
+                    case Err():
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('삭제 요청을 취소하지 못했어요. 잠시 뒤에 다시 시도해 주세요'),
+                        ),
+                      );
                   }
                 },
                 child: const Text('삭제 취소'),
