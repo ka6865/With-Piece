@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/result/result.dart';
+import '../../core/supabase/supabase_providers.dart';
 import '../../data/repositories/repository_providers.dart';
 import 'auth_state.dart';
 
@@ -13,9 +15,8 @@ class StartedOnPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final startedOn = isEditing
-        ? ref.watch(currentCoupleProvider).value?.startedOn
-        : null;
+    final couple = ref.watch(currentCoupleProvider).value;
+    final startedOn = isEditing ? couple?.startedOn : null;
     return Scaffold(
       appBar: AppBar(title: Text(isEditing ? '사귄 날 수정' : '사귄 날')),
       body: Padding(
@@ -32,6 +33,13 @@ class StartedOnPage extends ConsumerWidget {
             const SizedBox(height: 24),
             FilledButton(
               onPressed: () async {
+                final userId = ref.read(sessionUserIdProvider);
+                final coupleId = couple?.id;
+                bool sameScope() =>
+                    context.mounted &&
+                    (ModalRoute.of(context)?.isCurrent ?? true) &&
+                    ref.read(sessionUserIdProvider) == userId &&
+                    ref.read(currentCoupleProvider).value?.id == coupleId;
                 final today = DateTime.now();
                 final date = await showDatePicker(
                   context: context,
@@ -39,17 +47,65 @@ class StartedOnPage extends ConsumerWidget {
                   lastDate: today,
                   initialDate: startedOn ?? today,
                 );
-                if (date == null) return;
+                if (date == null || !context.mounted || !sameScope()) return;
+                if (ref.read(currentCoupleProvider).isLoading) return;
+                final currentDate = ref
+                    .read(currentCoupleProvider)
+                    .value
+                    ?.startedOn;
+                if (isEditing &&
+                    currentDate != null &&
+                    date.isAfter(currentDate)) {
+                  final confirmed = await showDialog<bool>(
+                    context: context,
+                    builder: (dialogContext) => AlertDialog(
+                      title: const Text('사귄 날을 늦출까요?'),
+                      content: const Text(
+                        '동기화하면 두 사람의 새 날짜 이전 스캔 기록과 비교 승인이 삭제돼요. '
+                        '삭제된 비교 승인은 날짜를 다시 앞당겨도 다시 선택해야 해요.',
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(dialogContext, false),
+                          child: const Text('취소'),
+                        ),
+                        FilledButton(
+                          onPressed: () => Navigator.pop(dialogContext, true),
+                          child: const Text('변경하기'),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (confirmed != true || !context.mounted || !sameScope()) {
+                    return;
+                  }
+                  if (ref.read(currentCoupleProvider).isLoading) return;
+                  if (ref.read(currentCoupleProvider).value?.startedOn !=
+                      currentDate) {
+                    return;
+                  }
+                }
                 final result = await ref
                     .read(coupleRepositoryProvider)
                     .setStartedOn(date);
-                if (result is Err && context.mounted) {
+                if (!context.mounted || !sameScope()) return;
+                if (result is Err) {
                   ScaffoldMessenger.of(
                     context,
                   ).showSnackBar(const SnackBar(content: Text('저장하지 못했어요')));
                   return;
                 }
                 ref.invalidate(currentCoupleProvider);
+                if (isEditing) {
+                  final router = GoRouter.maybeOf(context);
+                  if (router != null && router.canPop()) {
+                    router.pop();
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('사귄 날을 저장했어요')),
+                    );
+                  }
+                }
               },
               child: Text(isEditing ? '날짜 바꾸기' : '날짜 고르기'),
             ),
