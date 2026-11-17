@@ -1,7 +1,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
-select plan(21);
+select plan(22);
 insert into auth.users (id) values
  ('00000000-0000-0000-0000-0000000000a1'),
  ('00000000-0000-0000-0000-0000000000b1');
@@ -37,6 +37,9 @@ select lives_ok($$ select update_photo_day_shares('10000000-0000-0000-0000-00000
  '다른 기기 동기화로 빠진 원본도 승인할 수 있다');
 select results_eq('select day, photo_count from photo_days order by day',
  $$ values ('2026-10-02'::date,1), ('2026-10-04'::date,2) $$, '승인과 함께 원본을 다시 맞춘다');
+select update_photo_day_shares('10000000-0000-0000-0000-000000000001', '[{"day":"2026-10-04","region_id":"32400","photo_count":1}]', '[]');
+select is((select photo_count from photo_days where day = '2026-10-04'), 2,
+ '이미 있는 원본의 장수는 오래된 승인 화면 값으로 덮지 않는다');
 select update_photo_day_shares('10000000-0000-0000-0000-000000000001', '[]', '[{"day":"2026-10-02","region_id":"11010"}]');
 select sync_photo_days('10000000-0000-0000-0000-000000000001', '[{"day":"2026-10-04","region_id":"32400","photo_count":2}]');
 select throws_ok($$ select update_photo_day_shares('10000000-0000-0000-0000-000000000099', '[]', '[]') $$,

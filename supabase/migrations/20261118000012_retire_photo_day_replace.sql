@@ -2,8 +2,8 @@
 drop function public.replace_photo_days(jsonb);
 drop function public.replace_photo_day_shares(uuid, jsonb);
 
--- 승인 항목은 장수를 함께 받아 원본을 맞춘다. 다른 기기의 동기화가 지운 날짜도
--- 이 기기 스냅샷으로 승인할 수 있다.
+-- 승인 항목은 장수를 함께 받아 빠진 원본만 채운다. 다른 기기의 동기화가 지운 날짜도
+-- 이 기기 스냅샷으로 승인할 수 있다. 있는 원본의 장수는 더 최신일 수 있는 스캔 값을 둔다.
 create or replace function public.update_photo_day_shares(p_couple_id uuid, p_approve jsonb, p_revoke jsonb) returns void
 language plpgsql security invoker set search_path = '' as $$
 declare
@@ -34,7 +34,7 @@ begin
     select me, r.day, r.region_id, max(r.photo_count)
     from jsonb_to_recordset(p_approve) r(day date, region_id text, photo_count int)
     group by r.day, r.region_id
-    on conflict (user_id, day, region_id) do update set photo_count = excluded.photo_count;
+    on conflict (user_id, day, region_id) do nothing;
   delete from public.photo_day_shares s where s.user_id = me and s.couple_id = p_couple_id
     and (s.day < started or exists (
       select 1 from jsonb_to_recordset(p_revoke) r(day date, region_id text)
