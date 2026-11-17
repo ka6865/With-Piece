@@ -27,6 +27,7 @@ supabase status -o env        # API_URL, PUBLISHABLE_KEY를 env/local.json에 �
 supabase db reset --debug     # 마이그레이션과 regions 기준 데이터 적용
 supabase test db              # RLS·RPC pgTAP
 bash supabase/tests/join_race.sh
+bash supabase/tests/photo_day_shares_race.sh
 flutter test                  # 스택이 떠 있으면 test/supabase 통합 테스트도 돈다
 flutter run --dart-define-from-file=env/local.json
 ```
@@ -54,7 +55,7 @@ flutter build ios --release --dart-define-from-file=env/prod.json
 ## 정리 작업(daily-cleanup)
 
 `supabase/functions/daily-cleanup`은 유예가 끝난 계정 삭제, 고아 사진 파일 정리, 만료 초대 정리를 한다.
-service role 키로만 호출된다. 만료된 요청을 잠가 처리 시작을 확정한 뒤 파일 삭제 → DB 관계 정리 → Auth 삭제 순서로 실행한다. 처리 시작 뒤 취소는 거부되며, 외부 호출이 실패하면 다음 실행에서 재시도한다. 클라우드에 배포한 뒤 서비스 키를 Vault에 넣고 하루 1회 일정을 건다.
+service role 키로만 호출된다. 만료된 요청을 잠가 처리 시작을 확정한 뒤 파일 삭제 → DB 관계 정리 → Auth 삭제 순서로 실행한다. 처리 시작 뒤 취소는 거부된다. 정리 중 실패한 계정은 다음 실행에서 재시도하고 다른 계정과 고아 파일은 계속 처리한다. 실패한 실행은 오류 상태로 응답한다. 클라우드에 배포한 뒤 서비스 키를 Vault에 넣고 하루 1회 일정을 건다.
 
 ```bash
 supabase functions deploy daily-cleanup --project-ref <ref>
