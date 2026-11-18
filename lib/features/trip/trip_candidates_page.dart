@@ -255,6 +255,9 @@ class _TripCandidatesPageState extends ConsumerState<TripCandidatesPage> {
           itemBuilder: (context, index) {
             final entry = items[index];
             final c = entry.candidate;
+            final theme = Theme.of(context);
+            // 사진을 먼저 크게 보여 무슨 여행이었는지 떠올리게 하고, 날짜·지역은
+            // 수첩 캡션처럼 단다(커플 디자인 4.5)
             return Card(
               margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
               child: Padding(
@@ -262,17 +265,19 @@ class _TripCandidatesPageState extends ConsumerState<TripCandidatesPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      c.title,
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    Text(formatRange(c.range)),
-                    const SizedBox(height: 4),
-                    Text(c.regionIds.map((id) => names[id] ?? id).join(' · ')),
-                    const SizedBox(height: 8),
                     _CandidatePhotos(candidate: c),
+                    Text(c.title, style: theme.textTheme.titleMedium),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${formatRange(c.range)} · '
+                      '${c.regionIds.map((id) => names[id] ?? id).join(' · ')}',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
                     const SizedBox(height: 8),
                     Wrap(
+                      alignment: WrapAlignment.end,
                       spacing: 8,
                       children: [
                         if (index + 1 < items.length)
@@ -332,24 +337,35 @@ class _CandidatePhotos extends ConsumerWidget {
           ?.where((p) => candidate.regionIds.contains(p.regionId)),
     ]..sort((a, b) => a.takenAt.compareTo(b.takenAt));
     if (photos.isEmpty) return const SizedBox.shrink();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          height: 64,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            itemCount: photos.length < shown ? photos.length : shown,
-            separatorBuilder: (_, _) => const SizedBox(width: 4),
-            itemBuilder: (_, i) => SizedBox.square(
-              dimension: 64,
-              child: LocalThumbnail(assetId: photos[i].assetId),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            height: 112,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: photos.length < shown ? photos.length : shown,
+              separatorBuilder: (_, _) => const SizedBox(width: 6),
+              itemBuilder: (_, i) => ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: SizedBox.square(
+                  dimension: 112,
+                  child: LocalThumbnail(assetId: photos[i].assetId),
+                ),
+              ),
             ),
           ),
-        ),
-        const SizedBox(height: 4),
-        Text('사진 ${photos.length}장'),
-      ],
+          const SizedBox(height: 4),
+          Text(
+            '사진 ${photos.length}장',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

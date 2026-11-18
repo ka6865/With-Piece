@@ -37,8 +37,8 @@ class PhotoGrid extends ConsumerWidget {
         crossAxisCount: 3,
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
-        mainAxisSpacing: 2,
-        crossAxisSpacing: 2,
+        mainAxisSpacing: 4,
+        crossAxisSpacing: 4,
         children: [
           for (final photo in photos)
             GestureDetector(
@@ -50,13 +50,16 @@ class PhotoGrid extends ConsumerWidget {
               onLongPress: onLongPress == null
                   ? null
                   : () => onLongPress!(photo),
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  RemoteImage(url: snapshot.data?[photo.thumbPath]),
-                  if (trailingFor?.call(photo) case final trailing?)
-                    Align(alignment: Alignment.topRight, child: trailing),
-                ],
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    RemoteImage(url: snapshot.data?[photo.thumbPath]),
+                    if (trailingFor?.call(photo) case final trailing?)
+                      Align(alignment: Alignment.topRight, child: trailing),
+                  ],
+                ),
               ),
             ),
         ],
