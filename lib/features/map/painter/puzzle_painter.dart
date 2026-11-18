@@ -47,6 +47,19 @@ class PuzzlePainter extends CustomPainter {
       ..color = colorScheme.outline
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1;
+    // 채운 조각과 빈 조각의 면 색 대비가 낮아 테두리와 볼록 표시로도 구분한다(커플 디자인 4.1)
+    final visitedBorder = Paint()
+      ..color = colorScheme.onPrimaryContainer
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2;
+    final highlight = Paint()
+      ..color = Colors.white.withValues(alpha: 0.45)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.6;
+    final homeBorder = Paint()
+      ..color = colorScheme.tertiary
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2;
     if (showSea) {
       canvas.drawRect(
         Offset.zero & size,
@@ -64,10 +77,26 @@ class PuzzlePainter extends CustomPainter {
       final home = homeRegionIds.contains(polygon.regionId);
       final visited = home || visitedRegionIds.contains(polygon.regionId);
       canvas.drawPath(path, visited ? visitedFill : emptyFill);
+      if (visited) _drawHighlight(canvas, path, highlight);
       if (home) _drawHatch(canvas, path, polygon.bounds, hatch);
       // 채움 여부를 색만으로 구분하지 않도록 미방문 조각은 점선으로 그린다
-      canvas.drawPath(visited ? path : dashed(path), border);
+      canvas.drawPath(
+        visited ? path : dashed(path),
+        home
+            ? homeBorder
+            : visited
+            ? visitedBorder
+            : border,
+      );
     }
+  }
+
+  // 조각 안쪽 왼쪽 위 가장자리에 밝은 선을 그어 살짝 볼록해 보이게 한다
+  static void _drawHighlight(Canvas canvas, Path path, Paint paint) {
+    canvas.save();
+    canvas.clipPath(path);
+    canvas.drawPath(path.shift(const Offset(0.8, 0.8)), paint);
+    canvas.restore();
   }
 
   static void _drawHatch(Canvas canvas, Path path, Rect bounds, Paint paint) {

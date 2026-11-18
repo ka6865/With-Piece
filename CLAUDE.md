@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 현재 상태
 
-1단계(지도)와 2단계(Supabase 기반)가 끝났다. 계획은 `docs/superpowers/plans/`에 단계별로 있고, 다음은 설계 문서 15장의 3단계(MVP 완성)다.
+1~3단계(지도, Supabase 기반, MVP 기능)가 끝났다. 3단계의 두 기기 실사용 확인은 4단계 TestFlight로 미뤘다. 지금은 커플 디자인 개편(`docs/superpowers/specs/2026-11-19-커플-디자인-design.md`, ①~⑤ 단계별 PR)을 진행하고, 그 뒤 4단계 출시 준비(방명록·사진 댓글 포함)다. `docs/superpowers/`는 gitignore 대상이라 로컬에만 있다.
 
 ## 명령
 
