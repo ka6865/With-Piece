@@ -83,7 +83,14 @@ class _StartedOnPageState extends ConsumerState<StartedOnPage> {
                               done.complete(next);
                             }
                           });
-                          couple = await done.future;
+                          // 응답이 오지 않으면 버튼이 막힌 채 남으므로 실패로 본다
+                          couple = await done.future.timeout(
+                            const Duration(seconds: 10),
+                            onTimeout: () => AsyncError(
+                              TimeoutException(null),
+                              StackTrace.current,
+                            ),
+                          );
                           sub.close();
                         }
                         return (!couple.hasError, couple.value?.startedOn);

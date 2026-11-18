@@ -354,4 +354,28 @@ void main() {
     );
     await tester.pumpAndSettle();
   });
+
+  testWidgets('커플 재조회 응답이 오지 않으면 10초 뒤 실패를 알리고 버튼을 푼다', (tester) async {
+    Completer<Couple>? reload;
+    final couples = await pumpPage(
+      tester,
+      loadCouple: (ref) {
+        final couple = ref.watch(dateContextProvider).couple;
+        return reload?.future ?? Future.value(couple);
+      },
+    );
+    reload = Completer<Couple>();
+    ProviderScope.containerOf(
+      tester.element(find.byType(StartedOnPage)),
+    ).invalidate(currentCoupleProvider);
+    await chooseDate(tester, '01/01/2019');
+    await tester.pump(const Duration(seconds: 11));
+    await tester.pump();
+    expect(couples.startedOnCalls, isEmpty);
+    expect(find.text('저장하지 못했어요'), findsOneWidget);
+    expect(
+      tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
+      isNotNull,
+    );
+  });
 }

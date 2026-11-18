@@ -161,9 +161,14 @@ final realtimeSyncProvider = Provider<void>((ref) {
         // 혼자일 때는 이미 실패한 스캔만, 설정에서 전체 접근을 허용하고 돌아왔을 때
         // 다시 한다. 권한 창을 다시 띄우지 않도록 상태만 확인한다
         unawaited(
-          ref.read(photoLibraryRepositoryProvider).hasFullAccess().then((ok) {
-            if (ok && isCurrent()) ref.invalidate(scanSnapshotProvider);
-          }),
+          ref
+              .read(photoLibraryRepositoryProvider)
+              .hasFullAccess()
+              .then((ok) {
+                if (ok && isCurrent()) ref.invalidate(scanSnapshotProvider);
+              })
+              // 확인에 실패하면 스캔 오류를 그대로 두고 다음 복귀에서 다시 확인한다
+              .catchError((Object _) {}),
         );
       }
       refreshAll();
