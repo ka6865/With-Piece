@@ -99,6 +99,10 @@ Future<void> pumpApp(WidgetTester tester, String location) async {
 
 void main() {
   testWidgets('앨범은 확인된 여행만 최신순으로 사진 수와 함께 보인다', (tester) async {
+    // 2열 격자가 세 여행을 모두 그리도록 화면을 세로로 길게 둔다
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
     await pumpApp(tester, '/album');
     final titles = tester
         .widgetList<Text>(find.byKey(const Key('album-title')))

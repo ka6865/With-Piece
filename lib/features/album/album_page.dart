@@ -53,7 +53,11 @@ class AlbumPage extends ConsumerWidget {
       appBar: AppBar(title: Text(archived == null ? '퍼즐 앨범' : '지난 기록')),
       body: trips.hasValue
           ? confirmed.isEmpty
-                ? const Center(child: Text('아직 확인한 여행이 없어요'))
+                ? Center(
+                    child: Text(
+                      archived == null ? '첫 여행을 여기 담아볼까요?' : '확인한 여행이 없어요',
+                    ),
+                  )
                 : FutureBuilder<Map<String, String>>(
                     key: ValueKey((
                       userId: userId,
@@ -62,38 +66,98 @@ class AlbumPage extends ConsumerWidget {
                     future: ref.watch(signedUrlCacheProvider).urls([
                       for (final c in covers.values) c.thumbPath,
                     ]),
-                    builder: (context, urls) => ListView(
-                      children: [
-                        for (final trip in confirmed)
-                          ListTile(
-                            leading: SizedBox.square(
-                              dimension: 56,
-                              child: RemoteImage(
-                                url: urls.data?[covers[trip.id]?.thumbPath],
-                              ),
-                            ),
-                            title: Text(
-                              trip.title,
-                              key: const Key('album-title'),
-                            ),
-                            subtitle: Text(
-                              '${formatRange(trip.range)} · '
-                              '${trip.regionIds.map((id) => names[id] ?? id).join(' · ')}\n'
-                              '사진 ${photos.where((p) => p.tripId == trip.id).length}장',
-                            ),
-                            isThreeLine: true,
-                            onTap: () => context.push(
-                              archived == null
-                                  ? '/trips/${trip.id}'
-                                  : '/archive/$archived/trips/${trip.id}',
-                            ),
+                    // 사진첩처럼 표지를 크게 두 줄로 놓고 날짜·지역을 캡션으로 단다
+                    // (커플 디자인 4.5)
+                    builder: (context, urls) => GridView.builder(
+                      padding: const EdgeInsets.all(16),
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 2,
+                            mainAxisSpacing: 16,
+                            crossAxisSpacing: 12,
+                            childAspectRatio: 0.72,
                           ),
-                      ],
+                      itemCount: confirmed.length,
+                      itemBuilder: (context, index) {
+                        final trip = confirmed[index];
+                        return _AlbumCard(
+                          trip: trip,
+                          coverUrl: urls.data?[covers[trip.id]?.thumbPath],
+                          caption:
+                              '${formatRange(trip.range)} · '
+                              '${trip.regionIds.map((id) => names[id] ?? id).join(' · ')}',
+                          photoCount: photos
+                              .where((p) => p.tripId == trip.id)
+                              .length,
+                          onTap: () => context.push(
+                            archived == null
+                                ? '/trips/${trip.id}'
+                                : '/archive/$archived/trips/${trip.id}',
+                          ),
+                        );
+                      },
                     ),
                   )
           : trips.hasError
           ? const Center(child: Text('앨범을 불러오지 못했어요'))
           : const Center(child: CircularProgressIndicator()),
+    );
+  }
+}
+
+class _AlbumCard extends StatelessWidget {
+  const _AlbumCard({
+    required this.trip,
+    required this.coverUrl,
+    required this.caption,
+    required this.photoCount,
+    required this.onTap,
+  });
+
+  final Trip trip;
+  final String? coverUrl;
+  final String caption;
+  final int photoCount;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: SizedBox(
+                width: double.infinity,
+                child: RemoteImage(url: coverUrl),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            trip.title,
+            key: const Key('album-title'),
+            style: theme.textTheme.titleSmall,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          Text(
+            caption,
+            style: muted,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          Text('사진 $photoCount장', style: muted),
+        ],
+      ),
     );
   }
 }

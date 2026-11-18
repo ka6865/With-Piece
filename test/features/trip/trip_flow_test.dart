@@ -57,8 +57,7 @@ void main() {
       candidate(3, 4, ['32060', '32400'], '속초시 고성군 1박 2일'),
     ]);
     expect(find.text('속초시 고성군 1박 2일'), findsOneWidget);
-    expect(find.text('2026.10.3 ~ 10.4'), findsOneWidget);
-    expect(find.text('속초시 · 고성군'), findsOneWidget);
+    expect(find.text('2026.10.3 ~ 10.4 · 속초시 · 고성군'), findsOneWidget);
   });
 
   testWidgets('후보 갱신은 유효한 후보를 최신 순서로 보여준다', (tester) async {
@@ -86,7 +85,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('속초시 고성군 1박 2일'), findsNothing);
     expect(find.text('속초시 1박 2일'), findsOneWidget);
-    expect(find.text('경주시'), findsNWidgets(2));
+    expect(find.text('경주시'), findsOneWidget);
+    expect(find.text('2026.10.1 · 경주시'), findsOneWidget);
     expect(
       tester.getTopLeft(find.text('속초시 1박 2일')).dy,
       lessThan(tester.getTopLeft(find.text('경주시').first).dy),
@@ -178,7 +178,7 @@ void main() {
     ]);
     await tester.tap(find.text('이전 후보와 합치기').first);
     await tester.pumpAndSettle();
-    expect(find.text('2026.10.3 ~ 10.5'), findsOneWidget);
+    expect(find.textContaining('2026.10.3 ~ 10.5 · '), findsOneWidget);
     await tester.tap(find.text('확인'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('지도에 채우기'));
