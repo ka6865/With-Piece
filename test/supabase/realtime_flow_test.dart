@@ -114,6 +114,9 @@ Future<void> main() async {
     addTearDown(sync.close);
     expect(await container.read(currentCoupleProvider.future), isNull);
     await _joined(a, 'user:${a.auth.currentUser!.id}');
+    // 첫 가입 보정 조회가 끝난 뒤 수락해야 알림 수신을 검증한다
+    await container.pump();
+    expect(await container.read(currentCoupleProvider.future), isNull);
     final id = await _couple(a, b);
     await _until(
       () async =>
