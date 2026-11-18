@@ -44,14 +44,14 @@ Future<void> tapProvinceByCode(WidgetTester tester, String code) async {
 
 void main() {
   testWidgets('전국 화면은 17개 시도 진행률을 표시한다', (tester) async {
-    await tester.pumpWidget(appAt('/'));
+    await tester.pumpWidget(appAt('/map'));
     await tester.pumpAndSettle();
     expect(find.text('0 / 25'), findsOneWidget);
     expect(find.text('0 / 1'), findsOneWidget);
   });
 
   testWidgets('시도 코드를 탭하면 해당 시도 화면으로 간다', (tester) async {
-    await tester.pumpWidget(appAt('/'));
+    await tester.pumpWidget(appAt('/map'));
     await tester.pumpAndSettle();
     await tapProvinceByCode(tester, '32');
     await tester.pumpAndSettle();
@@ -60,7 +60,7 @@ void main() {
   });
 
   testWidgets('시도 화면에서 뒤로 가면 전국 화면으로 돌아온다', (tester) async {
-    await tester.pumpWidget(appAt('/'));
+    await tester.pumpWidget(appAt('/map'));
     await tester.pumpAndSettle();
     await tapProvinceByCode(tester, '32');
     await tester.pumpAndSettle();

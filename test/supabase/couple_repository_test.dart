@@ -27,6 +27,22 @@ Future<void> main() async {
     expect(coupleA.startedOn, isNull);
   }, skip: skip);
 
+  test('현재 커플에 내 닉네임과 상대 닉네임이 함께 온다', () async {
+    final ca = await signUpLocal();
+    final cb = await signUpLocal();
+    final a = CoupleRepository(ca);
+    final b = CoupleRepository(cb);
+    await ca
+        .from('users')
+        .update({'nickname': '민지'})
+        .eq('id', ca.auth.currentUser!.id);
+    valueOf(await b.join(valueOf(await a.createInvite()).code));
+    final fromA = valueOf(await a.current())!;
+    final fromB = valueOf(await b.current())!;
+    expect((fromA.myName, fromA.partnerName), ('민지', null));
+    expect((fromB.myName, fromB.partnerName), (null, '민지'));
+  }, skip: skip);
+
   test('합류 실패를 결과값으로 구분한다', () async {
     final a = CoupleRepository(await signUpLocal());
     final invite = valueOf(await a.createInvite());

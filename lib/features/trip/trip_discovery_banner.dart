@@ -43,28 +43,32 @@ class _TripDiscoveryBannerState extends ConsumerState<TripDiscoveryBanner> {
     }
     if (found == null) return const SizedBox.shrink();
     if (_emptyDismissed) return const SizedBox.shrink();
-    return Row(
-      children: [
-        Expanded(
-          child: _Banner(
-            message: '비교할 기록을 골라 함께 간 곳을 찾아보세요',
-            action: '기록 선택',
-            onPressed: () => context.push('/settings/photo-sharing'),
+    // 닫기·새로고침 버튼도 안내 배경 안에 둔다
+    return Material(
+      color: Theme.of(context).colorScheme.secondaryContainer,
+      child: Row(
+        children: [
+          Expanded(
+            child: _Banner(
+              message: '비교할 기록을 골라 함께 간 곳을 찾아보세요',
+              action: '기록 선택',
+              onPressed: () => context.push('/settings/photo-sharing'),
+            ),
           ),
-        ),
-        IconButton(
-          tooltip: '안내 닫기',
-          icon: const Icon(Icons.close),
-          onPressed: () => setState(() => _emptyDismissed = true),
-        ),
-        IconButton(
-          tooltip: '함께 간 기록 새로 확인',
-          icon: const Icon(Icons.refresh),
-          onPressed: () => ref
-            ..invalidate(matchedDaysProvider)
-            ..invalidate(tripCandidatesProvider),
-        ),
-      ],
+          IconButton(
+            tooltip: '안내 닫기',
+            icon: const Icon(Icons.close),
+            onPressed: () => setState(() => _emptyDismissed = true),
+          ),
+          IconButton(
+            tooltip: '함께 간 기록 새로 확인',
+            icon: const Icon(Icons.refresh),
+            onPressed: () => ref
+              ..invalidate(matchedDaysProvider)
+              ..invalidate(tripCandidatesProvider),
+          ),
+        ],
+      ),
     );
   }
 }

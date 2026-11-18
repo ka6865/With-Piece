@@ -10,11 +10,13 @@ import '../features/auth/auth_state.dart';
 import '../features/auth/invite_page.dart';
 import '../features/auth/login_page.dart';
 import '../features/auth/started_on_page.dart';
+import '../features/home/home_page.dart';
 import '../features/map/view/national_map_page.dart';
 import '../features/map/view/province_map_page.dart';
 import '../features/scan/photo_sharing_page.dart';
 import '../features/trip/manual_trip_page.dart';
 import '../features/trip/trip_candidates_page.dart';
+import 'app_shell.dart';
 
 // 테스트가 시작 위치를 바꿀 수 있게 provider로 둔다
 final initialLocationProvider = Provider<String>((ref) => '/');
@@ -29,7 +31,33 @@ final routerProvider = Provider<GoRouter>((ref) {
     refreshListenable: refresh,
     redirect: (_, state) => _redirect(ref, state.uri),
     routes: [
-      GoRoute(path: '/', builder: (_, _) => const NationalMapPage()),
+      StatefulShellRoute.indexedStack(
+        builder: (_, _, shell) => AppShell(shell: shell),
+        branches: [
+          StatefulShellBranch(
+            routes: [GoRoute(path: '/', builder: (_, _) => const HomePage())],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(path: '/map', builder: (_, _) => const NationalMapPage()),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(path: '/album', builder: (_, _) => const AlbumPage()),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/settings',
+                builder: (_, _) => const AccountLinksPage(),
+              ),
+            ],
+          ),
+        ],
+      ),
+      // 탭 밖 화면은 루트 내비게이터에 쌓여 하단 탭을 가린다. 뒤로 가면 탭 상태가 그대로다
       GoRoute(
         path: '/province/:provinceId',
         builder: (_, state) =>
@@ -43,7 +71,6 @@ final routerProvider = Provider<GoRouter>((ref) {
           isEditing: state.uri.queryParameters['edit'] == 'true',
         ),
       ),
-      GoRoute(path: '/album', builder: (_, _) => const AlbumPage()),
       GoRoute(path: '/archive', builder: (_, _) => const ArchivePage()),
       GoRoute(
         path: '/archive/:coupleId',
@@ -107,10 +134,11 @@ String? _redirect(Ref ref, Uri uri) {
   }
   final target = switch (ref.read(appStageProvider)) {
     AppStage.signedOut => '/login',
-    // 커플이 없어도 설정과 지난 기록(아카이브)은 볼 수 있어야 한다(설계 14장)
+    // 커플이 없어도 설정과 지난 기록(아카이브)은 볼 수 있어야 한다(설계 14장).
+    // 설정 탭의 루트(/settings)는 뒤로 갈 곳이 없어 초대 화면으로 보낸다
     AppStage.needsCouple || AppStage.needsStartedOn
         when uri.path.startsWith('/archive') ||
-            uri.path.startsWith('/settings') =>
+            uri.path.startsWith('/settings/') =>
       null,
     AppStage.needsCouple => '/invite',
     AppStage.needsStartedOn => '/started-on',
