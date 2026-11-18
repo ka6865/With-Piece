@@ -149,4 +149,11 @@ void main() {
     final bar = tester.widget<NavigationBar>(find.byType(NavigationBar));
     expect(bar.selectedIndex, 1);
   });
+
+  testWidgets('커플 조회에 실패해도 앨범에서 하단 탭으로 지도에 갈 수 있다', (tester) async {
+    await pumpApp(tester, stage: AppStage.unavailable, location: '/album');
+    await tester.tap(find.text('지도'));
+    await tester.pumpAndSettle();
+    expect(find.text('우리들의 조각'), findsOneWidget);
+  });
 }

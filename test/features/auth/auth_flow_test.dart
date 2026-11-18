@@ -138,9 +138,22 @@ void main() {
     expect(find.text('언제부터 함께였나요?'), findsOneWidget);
   });
 
-  testWidgets('커플이 아닌 단계의 설정 화면에는 하단 탭이 없다', (tester) async {
-    await pumpApp(tester, stage: AppStage.needsCouple, location: '/settings');
+  testWidgets('커플이 아닌 단계의 계정 설정에는 하단 탭이 없다', (tester) async {
+    await pumpApp(
+      tester,
+      stage: AppStage.needsCouple,
+      location: '/settings/accounts',
+    );
     expect(find.text('계정 연결'), findsOneWidget);
+    expect(find.byType(NavigationBar), findsNothing);
+  });
+
+  testWidgets('설정 탭에서 커플 연결이 끊기면 초대 화면으로 간다', (tester) async {
+    await pumpApp(tester, stage: AppStage.ready, location: '/settings');
+    expect(find.byType(NavigationBar), findsOneWidget);
+    stageOf(AppStage.needsCouple);
+    await tester.pumpAndSettle();
+    expect(find.text('연인과 연결하기'), findsOneWidget);
     expect(find.byType(NavigationBar), findsNothing);
   });
 

@@ -134,10 +134,11 @@ String? _redirect(Ref ref, Uri uri) {
   }
   final target = switch (ref.read(appStageProvider)) {
     AppStage.signedOut => '/login',
-    // 커플이 없어도 설정과 지난 기록(아카이브)은 볼 수 있어야 한다(설계 14장)
+    // 커플이 없어도 설정과 지난 기록(아카이브)은 볼 수 있어야 한다(설계 14장).
+    // 설정 탭의 루트(/settings)는 뒤로 갈 곳이 없어 초대 화면으로 보낸다
     AppStage.needsCouple || AppStage.needsStartedOn
         when uri.path.startsWith('/archive') ||
-            uri.path.startsWith('/settings') =>
+            uri.path.startsWith('/settings/') =>
       null,
     AppStage.needsCouple => '/invite',
     AppStage.needsStartedOn => '/started-on',
