@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/supabase/supabase_providers.dart';
+import '../../data/repositories/repository_providers.dart';
 import '../album/album_providers.dart';
 import '../auth/auth_state.dart';
 import 'photo_sharing_page.dart';
@@ -51,6 +52,13 @@ final realtimeSyncProvider = Provider<void>((ref) {
     if (!isCurrent()) return;
     refreshCouple();
     ref.invalidate(matchedDaysProvider);
+  }
+
+  void refreshShares() {
+    if (!isCurrent()) return;
+    ref
+      ..invalidate(matchedDaysProvider)
+      ..invalidate(photoSharingChoicesProvider);
   }
 
   void refreshMembership() {
@@ -134,26 +142,29 @@ final realtimeSyncProvider = Provider<void>((ref) {
         )..onBroadcast(
           event: 'shares',
           callback: (_) {
-            if (isCurrent() && coupleId == nextId) {
-              ref
-                ..invalidate(matchedDaysProvider)
-                ..invalidate(photoSharingChoicesProvider);
-            }
+            if (coupleId == nextId) refreshShares();
           },
         );
     sharesChannel = shares;
     subscribe(shares, () {
-      if (coupleId == nextId) ref.invalidate(matchedDaysProvider);
+      if (coupleId == nextId) refreshShares();
     });
   }, fireImmediately: true);
 
   final lifecycle = AppLifecycleListener(
     onResume: () {
       if (!isCurrent()) return;
-      // 사진첩 재스캔은 비교에 쓰는 커플만 한다. 혼자일 때는 설정에서 권한을 바꾸고
-      // 돌아온 경우처럼 직전 스캔이 실패했을 때만 다시 스캔한다
-      if (coupleId != null || ref.read(scanSnapshotProvider).hasError) {
+      if (coupleId != null) {
         ref.invalidate(scanSnapshotProvider);
+      } else if (ref.exists(scanSnapshotProvider) &&
+          ref.read(scanSnapshotProvider).hasError) {
+        // 혼자일 때는 이미 실패한 스캔만, 설정에서 전체 접근을 허용하고 돌아왔을 때
+        // 다시 한다. 권한 창을 다시 띄우지 않도록 상태만 확인한다
+        unawaited(
+          ref.read(photoLibraryRepositoryProvider).hasFullAccess().then((ok) {
+            if (ok && isCurrent()) ref.invalidate(scanSnapshotProvider);
+          }),
+        );
       }
       refreshAll();
     },
