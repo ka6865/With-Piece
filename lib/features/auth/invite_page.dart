@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/dev_flags.dart';
 import '../../core/result/result.dart';
+import '../../core/supabase/supabase_providers.dart';
 import '../../data/repositories/couple_repository.dart';
 import '../../data/repositories/repository_providers.dart';
 import '../scan/solo_preview.dart';
@@ -16,6 +18,7 @@ const _outcomeMessages = {
   JoinOutcome.self: '내 코드는 내가 쓸 수 없어요',
   JoinOutcome.alreadyCoupled: '이미 다른 사람과 연결되어 있어요',
   JoinOutcome.rateLimited: '잠시 뒤에 다시 시도해 주세요',
+  JoinOutcome.deletionPending: '계정 삭제를 취소한 뒤 연결해 주세요',
 };
 
 class InvitePage extends ConsumerStatefulWidget {
@@ -68,11 +71,18 @@ class _InvitePageState extends ConsumerState<InvitePage> {
 
   @override
   Widget build(BuildContext context) {
-    final invite = ref.watch(myInviteProvider);
+    final userId = ref.watch(sessionUserIdProvider);
+    final invite = userId == null
+        ? const AsyncLoading<Invite?>()
+        : ref.watch(myInviteProvider(userId));
     return Scaffold(
       appBar: AppBar(
         title: const Text('연인과 연결하기'),
         actions: [
+          TextButton(
+            onPressed: () => context.push('/settings/accounts'),
+            child: const Text('계정 설정'),
+          ),
           TextButton(
             onPressed: () => ref.read(authRepositoryProvider).signOut(),
             child: const Text('로그아웃'),
@@ -123,6 +133,11 @@ class _InvitePageState extends ConsumerState<InvitePage> {
           const SizedBox(height: 12),
           FilledButton(onPressed: _join, child: const Text('연결하기')),
           const SizedBox(height: 32),
+          ListTile(
+            title: const Text('지난 기록'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push('/archive'),
+          ),
           // 계정이 갈라진 사용자가 원인을 알 수 있게 한다(설계 10.2)
           const Text(
             '이미 연인과 연결했다면 다른 방법으로 로그인했을 수 있어요. '

@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import 'package:woori_piece/core/supabase/supabase_providers.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:woori_piece/app/app.dart';
 import 'package:woori_piece/app/router.dart';
@@ -11,6 +13,7 @@ import 'package:woori_piece/data/repositories/signed_url_cache.dart';
 import 'package:woori_piece/data/repositories/trip_repository.dart';
 import 'package:woori_piece/features/album/album_providers.dart';
 import 'package:woori_piece/features/auth/auth_state.dart';
+import 'package:woori_piece/features/scan/realtime_sync.dart';
 import 'package:woori_piece/features/map/painter/puzzle_layout.dart';
 import 'package:woori_piece/features/map/view/province_map_page.dart';
 import 'package:woori_piece/features/map/view/puzzle_map.dart';
@@ -63,6 +66,7 @@ Future<void> pumpApp(WidgetTester tester, String location) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        realtimeSyncProvider.overrideWith((ref) {}),
         appStageProvider.overrideWithValue(AppStage.ready),
         initialLocationProvider.overrideWithValue(location),
         provinceMapAssetProvider.overrideWith((ref) => provinces),
@@ -70,11 +74,11 @@ Future<void> pumpApp(WidgetTester tester, String location) async {
         currentCoupleProvider.overrideWith(
           (ref) async => const Couple(id: 'c1', partnerId: 'p'),
         ),
-        currentUserIdProvider.overrideWithValue('me'),
+        sessionUserIdProvider.overrideWithValue('me'),
         tripsProvider.overrideWith((ref) async => trips),
         homeRegionIdsProvider.overrideWith((ref) async => const {}),
         tripCandidatesProvider.overrideWith((ref) async => const []),
-        couplePhotosProvider.overrideWith(
+        couplePhotosProvider('me').overrideWith(
           (ref) async => [
             photo('p1', 't3', 'me'),
             photo('p2', 't3', 'partner'),

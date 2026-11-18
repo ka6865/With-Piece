@@ -16,6 +16,9 @@ Future<String?> localStackSkipReason() async {
   final url = _env['SUPABASE_URL'] as String?;
   if (url == null) return 'env/local.json이 없다';
   final uri = Uri.parse(url);
+  if (!const {'127.0.0.1', 'localhost', '::1'}.contains(uri.host)) {
+    return '통합 테스트는 로컬 Supabase 주소만 허용한다';
+  }
   try {
     final socket = await Socket.connect(
       uri.host,

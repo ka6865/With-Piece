@@ -9,10 +9,11 @@ class PhotoDayRepository {
 
   final SupabaseClient _client;
 
-  Future<Result<void>> replaceAll(Map<PhotoDay, int> days) => guard(
+  Future<Result<void>> sync(String coupleId, Map<PhotoDay, int> days) => guard(
     () => _client.rpc(
-      'replace_photo_days',
+      'sync_photo_days',
       params: {
+        'p_couple_id': coupleId,
         'p_rows': [
           for (final MapEntry(key: day, value: count) in days.entries)
             {

@@ -40,6 +40,7 @@ enum JoinOutcome {
   self,
   alreadyCoupled,
   rateLimited,
+  deletionPending,
 }
 
 // 커플 관계는 RPC로만 바뀐다(설계 9.3). 테이블에는 읽기만 한다
@@ -55,6 +56,7 @@ class CoupleRepository {
     'self': JoinOutcome.self,
     'already_coupled': JoinOutcome.alreadyCoupled,
     'rate_limited': JoinOutcome.rateLimited,
+    'deletion_pending': JoinOutcome.deletionPending,
   };
 
   Future<Result<Invite>> createInvite() => guard(() async {
@@ -106,18 +108,16 @@ class CoupleRepository {
 
   Future<Result<Couple?>> current() => guard(() async {
     final me = _client.auth.currentUser!.id;
+    // 사용자와 활성 커플을 한 요청으로 읽는다. 앱 시작·Realtime 가입마다 불린다
     final user = await _client
         .from('users')
-        .select('active_couple_id')
+        .select(
+          'couple:couples!users_active_couple_fk(id, user_a_id, user_b_id, started_on)',
+        )
         .eq('id', me)
         .single();
-    final coupleId = user['active_couple_id'] as String?;
-    if (coupleId == null) return null;
-    final row = await _client
-        .from('couples')
-        .select('id, user_a_id, user_b_id, started_on')
-        .eq('id', coupleId)
-        .single();
+    final row = user['couple'] as Map<String, dynamic>?;
+    if (row == null) return null;
     final startedOn = row['started_on'] as String?;
     return Couple(
       id: row['id'] as String,

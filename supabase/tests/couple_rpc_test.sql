@@ -78,6 +78,15 @@ insert into photo_days values
   ('00000000-0000-0000-0000-0000000000b1', '2026-10-04', '32410', 1);
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000a1","role":"authenticated"}', true);
+reset role;
+insert into photo_day_shares(couple_id, user_id, day, region_id)
+ select u.active_couple_id, d.user_id, d.day, d.region_id
+ from photo_days d join users u on u.id = d.user_id
+ where u.active_couple_id is not null and d.day >= '2026-01-01'
+   and d.user_id in ('00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000000b1')
+ on conflict do nothing;
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000a1","role":"authenticated"}', true);
 select results_eq('select day, region_id from couple_matched_days()',
   $$ values ('2026-10-03'::date, '32060'::text) $$,
   '두 사람 모두 있는 날·조각만, 사귄 날 이후만');

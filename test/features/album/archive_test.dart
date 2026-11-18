@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import 'package:woori_piece/core/supabase/supabase_providers.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:woori_piece/app/app.dart';
 import 'package:woori_piece/app/router.dart';
@@ -11,6 +13,7 @@ import 'package:woori_piece/data/repositories/signed_url_cache.dart';
 import 'package:woori_piece/data/repositories/trip_repository.dart';
 import 'package:woori_piece/features/album/album_providers.dart';
 import 'package:woori_piece/features/auth/auth_state.dart';
+import 'package:woori_piece/features/scan/realtime_sync.dart';
 import 'package:woori_piece/features/scan/trip_candidates.dart';
 import 'package:woori_piece/map_data/map_asset.dart';
 import 'package:woori_piece/map_data/map_asset_loader.dart';
@@ -26,12 +29,13 @@ Future<void> pumpApp(WidgetTester tester, String location) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        realtimeSyncProvider.overrideWith((ref) {}),
         appStageProvider.overrideWithValue(AppStage.needsCouple),
         initialLocationProvider.overrideWithValue(location),
         provinceMapAssetProvider.overrideWith((ref) => provinces),
         regionMapAssetProvider.overrideWith((ref) => regions),
-        currentUserIdProvider.overrideWithValue('me'),
-        archivedCouplesProvider.overrideWith(
+        sessionUserIdProvider.overrideWithValue('me'),
+        archivedCouplesProvider('me').overrideWith(
           (ref) async => [
             ArchivedCouple(
               id: 'c-old',
@@ -41,7 +45,7 @@ Future<void> pumpApp(WidgetTester tester, String location) async {
             ),
           ],
         ),
-        archivedTripsProvider('c-old').overrideWith(
+        archivedTripsProvider((userId: 'me', coupleId: 'c-old')).overrideWith(
           (ref) async => [
             Trip(
               id: 't1',
@@ -53,7 +57,7 @@ Future<void> pumpApp(WidgetTester tester, String location) async {
             ),
           ],
         ),
-        archivedPhotosProvider('c-old').overrideWith(
+        archivedPhotosProvider((userId: 'me', coupleId: 'c-old')).overrideWith(
           (ref) async => [
             PhotoRecord(
               id: 'p1',

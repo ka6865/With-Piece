@@ -4,6 +4,7 @@ import '../../core/result/result.dart';
 import '../../features/scan/home_regions.dart';
 import '../../features/scan/photo_days.dart';
 import '../../features/scan/trip_candidates.dart';
+import 'fetch_all.dart';
 
 enum TripStatus { confirmed, dismissed }
 
@@ -36,9 +37,13 @@ class TripRepository {
   final SupabaseClient _client;
 
   Future<Result<List<PhotoDay>>> matchedDays() => guard(() async {
-    final rows = await _client.rpc('couple_matched_days') as List;
+    final rows = await fetchAll<Map<String, dynamic>>((from, to) async {
+      final page =
+          await _client.rpc('couple_matched_days').range(from, to) as List;
+      return page.cast<Map<String, dynamic>>();
+    });
     return [
-      for (final row in rows.cast<Map<String, dynamic>>())
+      for (final row in rows)
         PhotoDay(
           DateTime.parse(row['day'] as String),
           row['region_id'] as String,
@@ -48,14 +53,16 @@ class TripRepository {
 
   // RLS는 아카이브된 이전 커플도 읽게 열어 두므로 현재 커플로 거른다(설계 14장)
   Future<Result<List<Trip>>> trips(String coupleId) => guard(() async {
-    final rows = await _client
+    final query = _client
         .from('trips')
         .select(
           'id, title, started_on, ended_on, status, source, cover_photo_id, '
           'trip_regions(region_id, created_at)',
         )
         .eq('couple_id', coupleId)
-        .order('started_on', ascending: false);
+        .order('started_on', ascending: false)
+        .order('id', ascending: false);
+    final rows = await fetchAll((from, to) => query.range(from, to));
     return [
       for (final row in rows)
         Trip(

@@ -60,3 +60,30 @@ drop trigger if exists dev_solo_mirror on public.photo_days;
 create trigger dev_solo_mirror
   after insert or update or delete on public.photo_days
   for each row execute function private.dev_solo_mirror();
+
+
+-- 개발 상대도 내 승인 범위만 따른다. 원본 미승인 기록은 자동 비교하지 않는다.
+create or replace function private.dev_solo_share_mirror() returns trigger
+language plpgsql security definer set search_path = '' as $$
+declare
+  owner uuid := coalesce(new.user_id, old.user_id);
+  couple uuid := coalesce(new.couple_id, old.couple_id);
+  partner uuid;
+begin
+  select case when c.user_a_id = owner then c.user_b_id else c.user_a_id end
+    into partner from public.couples c where c.id = couple;
+  if partner is null or not exists (
+    select 1 from auth.users where id = partner and raw_app_meta_data ->> 'dev_solo' = 'true'
+  ) then return null; end if;
+  if tg_op = 'DELETE' then
+    delete from public.photo_day_shares where couple_id = couple and user_id = partner
+      and day = old.day and region_id = old.region_id;
+  else
+    insert into public.photo_day_shares(couple_id, user_id, day, region_id)
+      values(couple, partner, new.day, new.region_id) on conflict do nothing;
+  end if;
+  return null;
+end $$;
+drop trigger if exists dev_solo_share_mirror on public.photo_day_shares;
+create trigger dev_solo_share_mirror after insert or delete on public.photo_day_shares
+  for each row execute function private.dev_solo_share_mirror();

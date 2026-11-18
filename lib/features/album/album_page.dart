@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../core/supabase/supabase_providers.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/repositories/photo_repository.dart';
 import '../../data/repositories/trip_repository.dart';
 import '../scan/scan_providers.dart';
+import '../auth/auth_state.dart';
 import '../trip/trip_candidates_page.dart';
 import 'album_providers.dart';
 import 'photo_grid.dart';
@@ -19,18 +22,29 @@ class AlbumPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final archived = archivedCoupleId;
-    final trips = archived == null
-        ? ref.watch(tripsProvider)
-        : ref.watch(archivedTripsProvider(archived));
-    final photos =
-        (archived == null
-                ? ref.watch(couplePhotosProvider)
-                : ref.watch(archivedPhotosProvider(archived)))
-            .value ??
-        const [];
+    final userId = ref.watch(sessionUserIdProvider);
+    final scope = ref.watch(currentCoupleScopeProvider);
+    AsyncValue<List<Trip>> trips = const AsyncLoading();
+    if (userId != null && archived != null) {
+      trips = ref.watch(
+        archivedTripsProvider((userId: userId, coupleId: archived)),
+      );
+    } else if (scope != null) {
+      trips = ref.watch(scopedTripsProvider(scope));
+    }
+    AsyncValue<List<PhotoRecord>> photosState = const AsyncLoading();
+    if (userId != null && archived != null) {
+      photosState = ref.watch(
+        archivedPhotosProvider((userId: userId, coupleId: archived)),
+      );
+    } else if (scope != null) {
+      photosState = ref.watch(scopedCouplePhotosProvider(scope));
+    }
+    final photos = photosState.value ?? const <PhotoRecord>[];
     final names = ref.watch(regionNamesProvider).value ?? const {};
+    final tripRows = trips.value;
     final confirmed = [
-      ...?trips.value?.where((t) => t.status == TripStatus.confirmed),
+      ...?tripRows?.where((t) => t.status == TripStatus.confirmed),
     ]..sort((a, b) => b.range.start.compareTo(a.range.start));
     final covers = {
       for (final trip in confirmed) trip.id: ?_coverOf(trip, photos),
@@ -41,6 +55,10 @@ class AlbumPage extends ConsumerWidget {
           ? confirmed.isEmpty
                 ? const Center(child: Text('아직 확인한 여행이 없어요'))
                 : FutureBuilder<Map<String, String>>(
+                    key: ValueKey((
+                      userId: userId,
+                      coupleId: archived ?? scope?.coupleId,
+                    )),
                     future: ref.watch(signedUrlCacheProvider).urls([
                       for (final c in covers.values) c.thumbPath,
                     ]),

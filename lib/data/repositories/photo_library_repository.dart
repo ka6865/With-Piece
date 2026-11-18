@@ -15,6 +15,13 @@ class PhotoLibraryRepository {
 
   static const pageSize = 500;
 
+  // 권한 창을 띄우지 않고 전체 접근 여부만 확인한다
+  Future<bool> hasFullAccess() async =>
+      await PhotoManager.getPermissionState(
+        requestOption: const PermissionRequestOption(),
+      ) ==
+      PermissionState.authorized;
+
   // since가 있으면 그 뒤에 생성된 사진만 읽는다(증분 스캔)
   Future<Result<PhotoScan>> readLocatedPhotos({DateTime? since}) async {
     final permission = await PhotoManager.requestPermissionExtend();

@@ -1,22 +1,71 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show UserIdentity;
 
 import '../../core/result/result.dart';
+import '../../core/supabase/supabase_providers.dart';
 import '../../data/repositories/auth_repository.dart';
 import '../../data/repositories/repository_providers.dart';
 import 'account_state.dart';
 import 'auth_state.dart';
 import 'login_page.dart';
+import '../scan/rescan.dart';
+import '../scan/scan_providers.dart';
+import '../scan/scanner.dart';
 
 // 여러 로그인 방법을 한 계정에 묶는다. Kakao는 이메일이 없어 자동 연동되지 않는다(설계 10.2)
-class AccountLinksPage extends ConsumerWidget {
+class AccountLinksPage extends ConsumerStatefulWidget {
   const AccountLinksPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<AccountLinksPage> createState() => _AccountLinksPageState();
+}
+
+class _AccountLinksPageState extends ConsumerState<AccountLinksPage> {
+  var _rescanning = false;
+
+  Future<void> _rescan() async {
+    if (_rescanning) return;
+    setState(() => _rescanning = true);
+    Result<void> result = const Err<void>(AppError.unknown);
+    try {
+      result = await rescan(
+        Scanner(
+          ref.read(photoLibraryRepositoryProvider),
+          await ref.read(regionLocatorProvider.future),
+          await ref.read(scanStoreProvider.future),
+        ),
+        () => ref
+          ..invalidate(scanSnapshotProvider)
+          ..invalidate(photoDaysSyncedProvider),
+      );
+    } catch (_) {
+      result = const Err(AppError.unknown);
+    } finally {
+      if (mounted) setState(() => _rescanning = false);
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          result is Ok
+              ? '사진 기록을 다시 확인했어요'
+              : result is Err && result.error == AppError.photoPermission
+              ? '사진 전체 접근을 허용한 뒤 다시 시도해 주세요'
+              : '다시 스캔하지 못했어요. 잠시 뒤 다시 시도해 주세요',
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final auth = ref.watch(authRepositoryProvider);
-    final identities = ref.watch(identitiesProvider);
+    final userId = ref.watch(sessionUserIdProvider);
+    final identities = userId == null
+        ? const AsyncLoading<List<UserIdentity>>()
+        : ref.watch(identitiesProvider(userId));
     void toastOnError(Result<void> result) {
       if (result is Err && context.mounted) {
         ScaffoldMessenger.of(
@@ -29,7 +78,7 @@ class AccountLinksPage extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('계정 연결')),
       body: switch (identities) {
-        AsyncData(:final value) => ListView(
+        AsyncValue(value: final List<UserIdentity> value) => ListView(
           children: [
             for (final identity in value)
               ListTile(
@@ -56,7 +105,31 @@ class AccountLinksPage extends ConsumerWidget {
                   onTap: () async => toastOnError(await auth.link(provider)),
                 ),
             const Divider(),
-            if (ref.watch(currentCoupleProvider).value != null)
+            if (ref.watch(scopedCurrentCoupleProvider).value != null) ...[
+              ListTile(
+                title: const Text('사귄 날 수정'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => context.push('/started-on?edit=true'),
+              ),
+              ListTile(
+                title: const Text('비교할 기록 선택'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => context.push('/settings/photo-sharing'),
+              ),
+            ],
+            ListTile(
+              title: const Text('전체 다시 스캔'),
+              trailing: _rescanning
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.refresh),
+              onTap: _rescanning ? null : _rescan,
+            ),
+            const Divider(),
+            if (ref.watch(scopedCurrentCoupleProvider).value != null)
               ListTile(
                 title: const Text('커플 연결 끊기'),
                 onTap: () async {
@@ -80,9 +153,19 @@ class AccountLinksPage extends ConsumerWidget {
               ),
               onTap: () async {
                 if (!await _confirmDeletion(context)) return;
-                toastOnError(
-                  await ref.read(accountRepositoryProvider).requestDeletion(),
-                );
+                final result = await ref
+                    .read(accountRepositoryProvider)
+                    .requestDeletion();
+                toastOnError(result);
+                if (result is Ok) {
+                  final userId = ref.read(sessionUserIdProvider);
+                  if (userId != null) {
+                    await ref.read(scanSyncProvider).clearForUser(userId);
+                    ref
+                      ..invalidate(scanSnapshotProvider)
+                      ..invalidate(photoDaysSyncedProvider);
+                  }
+                }
                 ref
                   ..invalidate(currentCoupleProvider)
                   ..invalidate(myDeletionDateProvider);

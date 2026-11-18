@@ -16,15 +16,25 @@ class ScanSync {
 
   // 같은 스캔 결과를 같은 사귄 날 기준으로 이미 올렸으면 건너뛴다.
   // 상대가 사귄 날을 바꾸거나 새 스캔이 쌓이면 키가 달라져 다시 맞춘다
-  Future<Result<void>> sync(ScanSnapshot snapshot, DateTime startedOn) async {
+  Future<Result<void>> sync(
+    ScanSnapshot snapshot,
+    DateTime startedOn, {
+    required String userId,
+    required String coupleId,
+  }) async {
     final key =
-        '${startedOn.toIso8601String()}|${snapshot.scannedAt?.toIso8601String()}';
-    if (_prefs.getString(_syncedKey) == key) return const Ok(null);
-    final result = await _repository.replaceAll({
+        '$userId|$coupleId|${startedOn.toIso8601String()}|${snapshot.scannedAt?.toIso8601String()}';
+    final storageKey = '$_syncedKey:$userId';
+    if (_prefs.getString(storageKey) == key) return const Ok(null);
+    final result = await _repository.sync(coupleId, {
       for (final MapEntry(key: day, value: count) in snapshot.days.entries)
         if (!day.day.isBefore(startedOn)) day: count,
     });
-    if (result is Ok) await _prefs.setString(_syncedKey, key);
+    if (result is Ok) await _prefs.setString(storageKey, key);
     return result;
+  }
+
+  Future<void> clearForUser(String userId) async {
+    await _prefs.remove('$_syncedKey:$userId');
   }
 }

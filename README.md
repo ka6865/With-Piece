@@ -27,6 +27,7 @@ supabase status -o env        # API_URL, PUBLISHABLE_KEY를 env/local.json에 �
 supabase db reset --debug     # 마이그레이션과 regions 기준 데이터 적용
 supabase test db              # RLS·RPC pgTAP
 bash supabase/tests/join_race.sh
+bash supabase/tests/photo_day_shares_race.sh
 flutter test                  # 스택이 떠 있으면 test/supabase 통합 테스트도 돈다
 flutter run --dart-define-from-file=env/local.json
 ```
@@ -43,10 +44,18 @@ flutter build ios --release --dart-define-from-file=env/prod.json
 `DEV_SOLO`를 넣지 않는다. 넣지 않으면 초대 코드 BGMS가 일반 코드로 처리된다(설계 13.1).
 개발용 빌드는 `env/cloud.json`(개발 프로젝트, `DEV_SOLO`=true)을 쓴다.
 
+## 비교할 기록 선택
+
+사진 스캔 결과는 본인 전용으로 저장하며 처음에는 어떤 기록도 상대와 비교하지 않는다.
+설정의 **비교할 기록 선택**에서 날짜·지역을 고르고 저장하면, 두 사람이 각각 승인한 기록의 교집합으로 여행 후보를 만든다. 승인한 날짜·지역은 상대가 알아낼 수 있으므로 공개해도 되는 기록만 고른다. 승인 범위는 현재 커플에만 적용된다. 상대가 승인을 바꾸면 커플 전용 Realtime 알림을 받아 교집합을 다시 읽는다. 지도 안내를 닫거나, 안내가 열려 있을 때 직접 새로 확인할 수 있다. 다른 기기에서 승인한 기록도 선택 화면에 표시하며, 저장은 내가 바꾼 항목에만 적용한다.
+
+설정은 커플이 없어도 열 수 있다. 사귄 날 수정과 **전체 다시 스캔**도 설정에서 한다.
+이전 버전에서 업로드한 기록은 새 버전에서 다시 승인해야 비교에 사용된다.
+
 ## 정리 작업(daily-cleanup)
 
 `supabase/functions/daily-cleanup`은 유예가 끝난 계정 삭제, 고아 사진 파일 정리, 만료 초대 정리를 한다.
-service role 키로만 호출된다. 클라우드에 배포한 뒤 서비스 키를 Vault에 넣고 하루 1회 일정을 건다.
+service role 키로만 호출된다. 만료된 요청을 잠가 처리 시작을 확정한 뒤 파일 삭제 → DB 관계 정리 → Auth 삭제 순서로 실행한다. 처리 시작 뒤 취소는 거부된다. 정리 중 실패한 계정은 다음 실행에서 재시도하고 다른 계정과 고아 파일은 계속 처리한다. 실패한 실행은 오류 상태로 응답한다. 클라우드에 배포한 뒤 서비스 키를 Vault에 넣고 하루 1회 일정을 건다.
 
 ```bash
 supabase functions deploy daily-cleanup --project-ref <ref>
@@ -80,3 +89,5 @@ python3 tools/build_adjacency.py flat.json adjacency_v1.json   # 인접 584, 보
 
 2026-11-17 기준 상세 GeoJSON의 SHA-256은
 `14c174c880d45c3c62aa97d9d4fc0d8605f0999560a4b70096567a8eb77f2ca9`이고 위 값이 모두 재현된다.
+
+정리 함수의 순서·실패 전파 테스트는 Node 26 이상에서 `node --test supabase/functions/daily-cleanup/index_test.mjs`로 실행한다. Supabase 호출은 대체하며 실제 클라우드 데이터를 지우지 않는다.

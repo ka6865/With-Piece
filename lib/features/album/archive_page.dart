@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../core/supabase/supabase_providers.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../data/repositories/couple_repository.dart';
 import 'album_providers.dart';
 
 // 아카이브된 커플 목록. 상대가 계정 삭제를 요청했으면 기록이 사라지는 날을 알린다(설계 14장)
@@ -10,7 +13,10 @@ class ArchivePage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final couples = ref.watch(archivedCouplesProvider);
+    final userId = ref.watch(sessionUserIdProvider);
+    final couples = userId == null
+        ? const AsyncLoading<List<ArchivedCouple>>()
+        : ref.watch(archivedCouplesProvider(userId));
     String date(DateTime d) => '${d.year}.${d.month}.${d.day}';
     return Scaffold(
       appBar: AppBar(title: const Text('지난 기록')),

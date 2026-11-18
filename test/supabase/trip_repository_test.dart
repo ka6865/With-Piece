@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:woori_piece/core/result/result.dart';
 import 'package:woori_piece/data/repositories/couple_repository.dart';
 import 'package:woori_piece/data/repositories/photo_day_repository.dart';
+import 'package:woori_piece/data/repositories/photo_sharing_repository.dart';
 import 'package:woori_piece/data/repositories/trip_repository.dart';
 import 'package:woori_piece/features/scan/home_regions.dart';
 import 'package:woori_piece/features/scan/photo_days.dart';
@@ -25,9 +26,16 @@ Future<void> main() async {
     final sokcho = PhotoDay(DateTime(2026, 10, 3), '32060');
     await PhotoDayRepository(
       a,
-    ).replaceAll({sokcho: 3, PhotoDay(DateTime(2026, 10, 4), '32400'): 1});
-    await PhotoDayRepository(b).replaceAll({sokcho: 1});
+    ).sync(coupleId, {sokcho: 3, PhotoDay(DateTime(2026, 10, 4), '32400'): 1});
+    await PhotoDayRepository(b).sync(coupleId, {sokcho: 1});
 
+    expect((await TripRepository(a).matchedDays()).valueOrThrow, isEmpty);
+    await PhotoSharingRepository(
+      a,
+    ).update(coupleId, approve: {sokcho: 3}, revoke: {});
+    await PhotoSharingRepository(
+      b,
+    ).update(coupleId, approve: {sokcho: 1}, revoke: {});
     final trips = TripRepository(a);
     expect((await trips.matchedDays()).valueOrThrow, [sokcho]);
 

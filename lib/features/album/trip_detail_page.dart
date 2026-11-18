@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/supabase/supabase_providers.dart';
+
 import '../../core/result/result.dart';
+import '../../data/repositories/photo_repository.dart';
 import '../../data/repositories/repository_providers.dart';
 import '../../data/repositories/trip_repository.dart';
 import '../auth/auth_state.dart';
@@ -28,9 +31,16 @@ class TripDetailPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final archived = archivedCoupleId;
     final readOnly = archived != null;
-    final trips = archived == null
-        ? ref.watch(tripsProvider)
-        : ref.watch(archivedTripsProvider(archived));
+    final userId = ref.watch(sessionUserIdProvider);
+    final scope = ref.watch(currentCoupleScopeProvider);
+    AsyncValue<List<Trip>> trips = const AsyncLoading();
+    if (userId != null && archived != null) {
+      trips = ref.watch(
+        archivedTripsProvider((userId: userId, coupleId: archived)),
+      );
+    } else if (scope != null) {
+      trips = ref.watch(scopedTripsProvider(scope));
+    }
     final trip = trips.value?.where((t) => t.id == tripId).firstOrNull;
     if (trip == null) {
       return Scaffold(
@@ -41,14 +51,16 @@ class TripDetailPage extends ConsumerWidget {
       );
     }
     final names = ref.watch(regionNamesProvider).value ?? const {};
-    final me = ref.watch(currentUserIdProvider);
-    final photos = [
-      ...?(archived == null
-              ? ref.watch(couplePhotosProvider)
-              : ref.watch(archivedPhotosProvider(archived)))
-          .value
-          ?.where((p) => p.tripId == tripId),
-    ];
+    final me = ref.watch(sessionUserIdProvider);
+    AsyncValue<List<PhotoRecord>> photosState = const AsyncLoading();
+    if (userId != null && archived != null) {
+      photosState = ref.watch(
+        archivedPhotosProvider((userId: userId, coupleId: archived)),
+      );
+    } else if (scope != null) {
+      photosState = ref.watch(scopedCouplePhotosProvider(scope));
+    }
+    final photos = [...?photosState.value?.where((p) => p.tripId == tripId)];
     // 화면을 그릴 때가 아니라 누를 때 읽는다. Supabase가 없는 상황에서도 화면은 그린다
     TripRepository repo() => ref.read(tripRepositoryProvider);
 
@@ -109,7 +121,11 @@ class TripDetailPage extends ConsumerWidget {
                   avatar: const Icon(Icons.add),
                   label: const Text('조각 추가'),
                   onPressed: () async {
-                    final coupleId = ref.read(currentCoupleProvider).value?.id;
+                    final coupleState = ref.read(scopedCurrentCoupleProvider);
+                    final coupleId =
+                        coupleState.isLoading || coupleState.hasError
+                        ? null
+                        : coupleState.value?.id;
                     final picked = await pickRegions(
                       context,
                       initial: trip.regionIds.toSet(),
@@ -143,7 +159,11 @@ class TripDetailPage extends ConsumerWidget {
                     icon: const Icon(Icons.delete, color: Colors.white),
                     onPressed: () => run(
                       ref.read(photoRepositoryProvider).delete(photo),
-                      () => ref.invalidate(couplePhotosProvider),
+                      () {
+                        if (userId case final id?) {
+                          ref.invalidate(couplePhotosProvider(id));
+                        }
+                      },
                     ),
                   ),
           ),
@@ -155,7 +175,10 @@ class TripDetailPage extends ConsumerWidget {
               icon: const Icon(Icons.add_photo_alternate),
               label: const Text('사진 더하기'),
               onPressed: () async {
-                final coupleId = ref.read(currentCoupleProvider).value?.id;
+                final coupleState = ref.read(scopedCurrentCoupleProvider);
+                final coupleId = coupleState.isLoading || coupleState.hasError
+                    ? null
+                    : coupleState.value?.id;
                 if (coupleId == null) return;
                 await Navigator.of(context).push(
                   MaterialPageRoute<void>(
@@ -169,7 +192,9 @@ class TripDetailPage extends ConsumerWidget {
                     ),
                   ),
                 );
-                ref.invalidate(couplePhotosProvider);
+                if (userId case final id?) {
+                  ref.invalidate(couplePhotosProvider(id));
+                }
               },
             ),
     );
@@ -205,12 +230,13 @@ class RegionPhotosPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final scope = ref.watch(currentCoupleScopeProvider);
     final names = ref.watch(regionNamesProvider).value ?? const {};
+    final photosState = scope == null
+        ? const AsyncLoading<List<PhotoRecord>>()
+        : ref.watch(scopedCouplePhotosProvider(scope));
     final photos = [
-      ...?ref
-          .watch(couplePhotosProvider)
-          .value
-          ?.where((p) => p.regionId == regionId),
+      ...?photosState.value?.where((p) => p.regionId == regionId),
     ];
     return Scaffold(
       appBar: AppBar(title: Text(names[regionId] ?? regionId)),

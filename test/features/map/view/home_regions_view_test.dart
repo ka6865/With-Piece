@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:woori_piece/core/result/result.dart';
+import 'package:woori_piece/core/supabase/supabase_providers.dart';
 import 'package:woori_piece/data/repositories/couple_repository.dart';
 import 'package:woori_piece/data/repositories/repository_providers.dart';
 import 'package:woori_piece/features/auth/auth_state.dart';
@@ -61,6 +62,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          sessionUserIdProvider.overrideWithValue('me'),
           provinceMapAssetProvider.overrideWith((ref) => provinces),
           regionMapAssetProvider.overrideWith((ref) => regions),
           tripRepositoryProvider.overrideWithValue(trips),

@@ -1,5 +1,5 @@
 begin;
-select plan(16);
+select plan(21);
 
 -- A·B 커플, B는 photo_days를 가진다. C는 31일 전에 삭제를 요청한 사용자
 insert into auth.users (id) values
@@ -54,6 +54,10 @@ select results_eq(
     '10000000-0000-0000-0000-000000000001/30000000-0000-0000-0000-000000000001/full/p.heic',
     '10000000-0000-0000-0000-000000000001/30000000-0000-0000-0000-000000000001/thumb/p.heic']) $$,
   '30일 지난 사용자만, 그가 속한 커플의 사진(상대 사진 포함) 경로를 돌려준다');
+select is((select deletion_started_at is not null from users where id = '00000000-0000-0000-0000-0000000000a1'), true, '정리 시작 표식이 기록된다');
+select is((select count(*)::int from couples where id = '10000000-0000-0000-0000-000000000001'), 1, 'Storage 삭제 전 커플 메타데이터가 보존된다');
+select lives_ok($$ select finalize_expired_user('00000000-0000-0000-0000-0000000000a1') $$, '파일 삭제 후 DB 정리를 완료한다');
+select is((select active_couple_id from users where id = '00000000-0000-0000-0000-0000000000b1'), null::uuid, '상대 사용자의 활성 커플 참조를 먼저 비운다');
 select is((select count(*)::int from couples where id = '10000000-0000-0000-0000-000000000001'), 0, '커플 기록이 지워진다');
 select is((select count(*)::int from photos where id = '40000000-0000-0000-0000-000000000001'), 0, '여행·사진 행도 함께 지워진다');
 
@@ -68,6 +72,13 @@ select results_eq('select * from orphan_photo_paths()',
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000d1","role":"authenticated"}', true);
 select throws_ok('select * from purge_expired_users()', '42501', null, '로그인 사용자는 정리 함수를 부를 수 없다');
+reset role;
+
+update users set deletion_requested_at = now() - interval '31 days' where id = '00000000-0000-0000-0000-0000000000c1';
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000c1","role":"authenticated"}', true);
+select throws_ok('select cancel_account_deletion()', 'P0001', 'deletion_expired', '만료된 요청은 취소하지 못한다');
+reset role;
 
 select * from finish();
 rollback;

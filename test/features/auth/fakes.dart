@@ -48,6 +48,7 @@ class FakeAuthRepository implements AuthRepository {
 
 class FakeCoupleRepository implements CoupleRepository {
   final joinedCodes = <String>[];
+  final startedOnCalls = <DateTime>[];
   int devSoloJoins = 0;
 
   @override
@@ -70,7 +71,10 @@ class FakeCoupleRepository implements CoupleRepository {
   }
 
   @override
-  Future<Result<void>> setStartedOn(DateTime date) async => const Ok(null);
+  Future<Result<void>> setStartedOn(DateTime date) async {
+    startedOnCalls.add(DateTime(date.year, date.month, date.day));
+    return const Ok(null);
+  }
 
   int archives = 0;
 
