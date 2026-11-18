@@ -138,9 +138,21 @@ void main() {
     expect(find.text('언제부터 함께였나요?'), findsOneWidget);
   });
 
-  testWidgets('모두 갖추면 지도', (tester) async {
+  testWidgets('커플이 아닌 단계의 설정 화면에는 하단 탭이 없다', (tester) async {
+    await pumpApp(tester, stage: AppStage.needsCouple, location: '/settings');
+    expect(find.text('계정 연결'), findsOneWidget);
+    expect(find.byType(NavigationBar), findsNothing);
+  });
+
+  testWidgets('커플 상태의 설정 탭에는 하단 탭이 있다', (tester) async {
+    await pumpApp(tester, stage: AppStage.ready, location: '/settings');
+    expect(find.text('계정 연결'), findsOneWidget);
+    expect(find.byType(NavigationBar), findsOneWidget);
+  });
+
+  testWidgets('모두 갖추면 홈', (tester) async {
     await pumpApp(tester, stage: AppStage.ready, location: '/login');
-    expect(find.text('우리들의 조각'), findsOneWidget);
+    expect(find.text('우리의 조각'), findsOneWidget);
   });
 
   testWidgets('로그인 전에 받은 초대 코드를 로그인 뒤 입력칸에 채운다', (tester) async {

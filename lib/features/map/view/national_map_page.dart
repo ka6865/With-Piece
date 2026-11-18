@@ -7,7 +7,6 @@ import '../../scan/progress.dart';
 import '../../auth/auth_state.dart';
 import '../../scan/realtime_sync.dart';
 import '../../scan/scan_providers.dart';
-import '../../trip/trip_discovery_banner.dart';
 import 'puzzle_map.dart';
 
 class NationalMapPage extends ConsumerWidget {
@@ -28,21 +27,7 @@ class NationalMapPage extends ConsumerWidget {
         : ref.watch(scopedHomeRegionIdsProvider(scope)).value;
     final filled = filledRegionIds(trips ?? const [], home ?? const {});
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('우리들의 조각'),
-        actions: [
-          IconButton(
-            tooltip: '퍼즐 앨범',
-            icon: const Icon(Icons.photo_album),
-            onPressed: () => context.push('/album'),
-          ),
-          IconButton(
-            tooltip: '계정 연결',
-            icon: const Icon(Icons.manage_accounts),
-            onPressed: () => context.push('/settings/accounts'),
-          ),
-        ],
-      ),
+      appBar: AppBar(title: const Text('우리들의 조각')),
       body: switch ((provinces, regions)) {
         (
           AsyncData(value: final provinceAsset),
@@ -55,7 +40,6 @@ class NationalMapPage extends ConsumerWidget {
             });
             return Column(
               children: [
-                if (scope != null) const TripDiscoveryBanner(),
                 // 바다가 화면 가장자리까지 이어지도록 여백 없이 둔다
                 Expanded(
                   child: PuzzleMap(

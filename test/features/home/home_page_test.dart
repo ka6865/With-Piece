@@ -1,0 +1,152 @@
+import 'dart:io';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:woori_piece/app/app.dart';
+import 'package:woori_piece/app/router.dart';
+import 'package:woori_piece/core/supabase/supabase_providers.dart';
+import 'package:woori_piece/data/repositories/couple_repository.dart';
+import 'package:woori_piece/data/repositories/photo_repository.dart';
+import 'package:woori_piece/data/repositories/signed_url_cache.dart';
+import 'package:woori_piece/data/repositories/trip_repository.dart';
+import 'package:woori_piece/features/album/album_providers.dart';
+import 'package:woori_piece/features/auth/auth_state.dart';
+import 'package:woori_piece/features/home/couple_days.dart';
+import 'package:woori_piece/features/map/view/mini_puzzle_map.dart';
+import 'package:woori_piece/features/scan/realtime_sync.dart';
+import 'package:woori_piece/features/scan/scan_providers.dart';
+import 'package:woori_piece/features/scan/trip_candidates.dart';
+import 'package:woori_piece/map_data/map_asset.dart';
+import 'package:woori_piece/map_data/map_asset_loader.dart';
+
+final provinces = MapAsset.parse(
+  File('assets/map/provinces_v1.json').readAsStringSync(),
+);
+final regions = MapAsset.parse(
+  File('assets/map/regions_v1.json').readAsStringSync(),
+);
+
+Trip trip(String id, String title, int day, List<String> regionIds) => Trip(
+  id: id,
+  title: title,
+  range: DateRange(DateTime(2026, 10, day), DateTime(2026, 10, day)),
+  status: TripStatus.confirmed,
+  source: TripSource.auto,
+  regionIds: regionIds,
+);
+
+PhotoRecord photo(String id, String tripId) => PhotoRecord(
+  id: id,
+  tripId: tripId,
+  regionId: '32060',
+  objectKey: 'c1/$tripId/$id.heic',
+  uploadedBy: 'me',
+  takenAt: DateTime(2026, 10, 3),
+  width: 2048,
+  height: 1536,
+);
+
+final startedOn = DateTime(2025, 6, 24);
+
+Future<void> pumpApp(
+  WidgetTester tester, {
+  AppStage stage = AppStage.ready,
+  String location = '/',
+  List<Trip> trips = const [],
+  List<TripCandidate> candidates = const [],
+}) async {
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        realtimeSyncProvider.overrideWith((ref) {}),
+        appStageProvider.overrideWithValue(stage),
+        initialLocationProvider.overrideWithValue(location),
+        provinceMapAssetProvider.overrideWith((ref) => provinces),
+        regionMapAssetProvider.overrideWith((ref) => regions),
+        currentCoupleProvider.overrideWith(
+          (ref) async => Couple(
+            id: 'c1',
+            partnerId: 'p',
+            startedOn: startedOn,
+            myName: '민지',
+            partnerName: '준호',
+          ),
+        ),
+        sessionUserIdProvider.overrideWithValue('me'),
+        tripsProvider.overrideWith((ref) async => trips),
+        homeRegionIdsProvider.overrideWith((ref) async => {'11010'}),
+        tripCandidatesProvider.overrideWith((ref) async => candidates),
+        couplePhotosProvider(
+          'me',
+        ).overrideWith((ref) async => [photo('p1', 't2'), photo('p2', 't2')]),
+        signedUrlCacheProvider.overrideWithValue(
+          SignedUrlCache(
+            (paths) async => {for (final p in paths) p: 'https://x/$p'},
+          ),
+        ),
+      ],
+      child: const WooriPieceApp(),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
+void main() {
+  testWidgets('홈은 함께한 날, 두 사람, 채운 조각 수를 보여준다', (tester) async {
+    await pumpApp(
+      tester,
+      trips: [
+        trip('t1', '경주시', 1, ['37020']),
+        trip('t2', '속초시', 3, ['32060', '32030']),
+      ],
+    );
+    expect(
+      find.text('D+${daysTogether(startedOn, DateTime.now())}'),
+      findsOneWidget,
+    );
+    expect(find.text('2025.06.24부터 함께'), findsOneWidget);
+    expect(find.text('민'), findsOneWidget);
+    expect(find.text('준'), findsOneWidget);
+    // 여행 조각 3개와 생활권 1개, 분모는 애셋의 조각 수
+    expect(find.text('4 / ${regions.features.length}'), findsOneWidget);
+    final mini = tester.widget<MiniPuzzleMap>(find.byType(MiniPuzzleMap));
+    expect(mini.visitedRegionIds, {'37020', '32060', '32030', '11010'});
+    // 최근 여행은 가장 늦게 시작한 여행
+    expect(find.text('속초시'), findsOneWidget);
+    expect(find.text('경주시'), findsNothing);
+  });
+
+  testWidgets('여행이 없으면 첫 여행 안내를 보여준다', (tester) async {
+    await pumpApp(tester);
+    expect(find.text('첫 여행을 여기 담아볼까요?'), findsOneWidget);
+    expect(find.text('전체'), findsNothing);
+  });
+
+  testWidgets('여행 발견 안내는 지도가 아니라 홈에 있다', (tester) async {
+    await pumpApp(
+      tester,
+      candidates: [
+        TripCandidate(
+          range: DateRange(DateTime(2026, 1, 1), DateTime(2026, 1, 1)),
+          regionIds: const ['32060'],
+          title: '속초시',
+        ),
+      ],
+    );
+    expect(find.text('함께 간 여행 1개를 찾았어요'), findsOneWidget);
+    await tester.tap(find.text('지도'));
+    await tester.pumpAndSettle();
+    expect(find.text('우리들의 조각'), findsOneWidget);
+    expect(find.text('함께 간 여행 1개를 찾았어요'), findsNothing);
+  });
+
+  testWidgets('우리의 조각 카드를 누르면 지도 탭으로 간다', (tester) async {
+    await pumpApp(tester);
+    await tester.tap(find.text('우리의 조각'));
+    await tester.pumpAndSettle();
+    expect(find.text('우리들의 조각'), findsOneWidget);
+    final bar = tester.widget<NavigationBar>(find.byType(NavigationBar));
+    expect(bar.selectedIndex, 1);
+  });
+}

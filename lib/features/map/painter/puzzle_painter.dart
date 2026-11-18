@@ -11,6 +11,7 @@ class PuzzlePainter extends CustomPainter {
     required this.colorScheme,
     this.homeRegionIds = const {},
     this.showSea = false,
+    this.compact = false,
   });
 
   static const hatchGap = 6.0;
@@ -25,6 +26,8 @@ class PuzzlePainter extends CustomPainter {
   final ColorScheme colorScheme;
   // 전국 화면만 바다를 칠한다. 시도 화면의 조각 바깥은 이웃 시도다
   final bool showSea;
+  // 홈 카드의 작은 지도. 점선이 뭉쳐 보이지 않게 빈 조각 테두리를 가는 실선으로 그린다
+  final bool compact;
 
   static Path buildPath(ScaledPolygon polygon) {
     final path = Path()..fillType = PathFillType.evenOdd;
@@ -44,9 +47,9 @@ class PuzzlePainter extends CustomPainter {
     // 미방문 조각도 옅게 채워 윤곽이 배경에 묻히지 않게 한다
     final emptyFill = Paint()..color = colorScheme.surfaceContainerHighest;
     final border = Paint()
-      ..color = colorScheme.outline
+      ..color = compact ? colorScheme.outlineVariant : colorScheme.outline
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1;
+      ..strokeWidth = compact ? 0.5 : 1;
     // 채운 조각과 빈 조각의 면 색 대비가 낮아 테두리와 볼록 표시로도 구분한다(커플 디자인 4.1)
     final visitedBorder = Paint()
       ..color = colorScheme.onPrimaryContainer
@@ -81,7 +84,7 @@ class PuzzlePainter extends CustomPainter {
       if (home) _drawHatch(canvas, path, polygon.bounds, hatch);
       // 채움 여부를 색만으로 구분하지 않도록 미방문 조각은 점선으로 그린다
       canvas.drawPath(
-        visited ? path : dashed(path),
+        visited || compact ? path : dashed(path),
         home
             ? homeBorder
             : visited
@@ -135,7 +138,8 @@ class PuzzlePainter extends CustomPainter {
       oldDelegate.homeRegionIds != homeRegionIds ||
       oldDelegate.regionNames != regionNames ||
       oldDelegate.colorScheme != colorScheme ||
-      oldDelegate.showSea != showSea;
+      oldDelegate.showSea != showSea ||
+      oldDelegate.compact != compact;
 
   @override
   bool shouldRebuildSemantics(PuzzlePainter oldDelegate) =>

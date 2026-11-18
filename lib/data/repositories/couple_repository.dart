@@ -10,11 +10,20 @@ class Invite {
 }
 
 class Couple {
-  const Couple({required this.id, required this.partnerId, this.startedOn});
+  const Couple({
+    required this.id,
+    required this.partnerId,
+    this.startedOn,
+    this.myName,
+    this.partnerName,
+  });
 
   final String id;
   final String partnerId;
   final DateTime? startedOn;
+  // 홈의 이니셜 표시용 닉네임. 로그인 제공자가 이름을 주지 않으면 없다
+  final String? myName;
+  final String? partnerName;
 }
 
 // 아카이브된 커플. 기록은 읽기 전용으로 남는다(설계 14장)
@@ -112,19 +121,22 @@ class CoupleRepository {
     final user = await _client
         .from('users')
         .select(
-          'couple:couples!users_active_couple_fk(id, user_a_id, user_b_id, started_on)',
+          'nickname, couple:couples!users_active_couple_fk(id, user_a_id, user_b_id, started_on, '
+          'a:users!couples_user_a_id_fkey(nickname), b:users!couples_user_b_id_fkey(nickname))',
         )
         .eq('id', me)
         .single();
     final row = user['couple'] as Map<String, dynamic>?;
     if (row == null) return null;
     final startedOn = row['started_on'] as String?;
+    final iAmA = row['user_a_id'] == me;
+    final partner = (iAmA ? row['b'] : row['a']) as Map<String, dynamic>?;
     return Couple(
       id: row['id'] as String,
-      partnerId:
-          (row['user_a_id'] == me ? row['user_b_id'] : row['user_a_id'])
-              as String,
+      partnerId: (iAmA ? row['user_b_id'] : row['user_a_id']) as String,
       startedOn: startedOn == null ? null : DateTime.parse(startedOn),
+      myName: user['nickname'] as String?,
+      partnerName: partner?['nickname'] as String?,
     );
   });
 
