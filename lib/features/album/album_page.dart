@@ -10,6 +10,7 @@ import '../scan/scan_providers.dart';
 import '../auth/auth_state.dart';
 import '../trip/trip_candidates_page.dart';
 import 'album_providers.dart';
+import 'comments.dart';
 import 'photo_grid.dart';
 
 // 확인된 여행을 최신순으로 본다. 지도가 "어디"라면 앨범은 "언제"다(설계 8.4)
@@ -46,6 +47,12 @@ class AlbumPage extends ConsumerWidget {
     final confirmed = [
       ...?tripRows?.where((t) => t.status == TripStatus.confirmed),
     ]..sort((a, b) => b.range.start.compareTo(a.range.start));
+    // 빌더 안이 아니라 build에서 구독한다
+    final unseen = {
+      if (archived == null)
+        for (final trip in confirmed)
+          if (hasUnseenComment(ref, scope, trip.id)) trip.id,
+    };
     final covers = {
       for (final trip in confirmed) trip.id: ?_coverOf(trip, photos),
     };
@@ -89,6 +96,7 @@ class AlbumPage extends ConsumerWidget {
                           photoCount: photos
                               .where((p) => p.tripId == trip.id)
                               .length,
+                          newComment: unseen.contains(trip.id),
                           onTap: () => context.push(
                             archived == null
                                 ? '/trips/${trip.id}'
@@ -112,6 +120,7 @@ class _AlbumCard extends StatelessWidget {
     required this.caption,
     required this.photoCount,
     required this.onTap,
+    this.newComment = false,
   });
 
   final Trip trip;
@@ -119,6 +128,7 @@ class _AlbumCard extends StatelessWidget {
   final String caption;
   final int photoCount;
   final VoidCallback onTap;
+  final bool newComment;
 
   @override
   Widget build(BuildContext context) {
@@ -155,7 +165,12 @@ class _AlbumCard extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
-          Text('사진 $photoCount장', style: muted),
+          Text(
+            newComment ? '사진 $photoCount장 · 새 글' : '사진 $photoCount장',
+            style: newComment
+                ? muted?.copyWith(color: theme.colorScheme.primary)
+                : muted,
+          ),
         ],
       ),
     );

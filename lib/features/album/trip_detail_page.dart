@@ -12,7 +12,9 @@ import '../scan/scan_providers.dart';
 import '../trip/photo_upload_page.dart';
 import '../trip/region_picker.dart';
 import '../trip/trip_candidates_page.dart';
+import '../../data/repositories/comment_repository.dart';
 import 'album_providers.dart';
+import 'comments.dart';
 import 'photo_grid.dart';
 
 // 여행 상세. 사진 더하기·지우기(내 사진만), 조각 보정, 제목, 표지(설계 8.4)
@@ -172,6 +174,16 @@ class TripDetailPage extends ConsumerWidget {
                     ),
                   ),
           ),
+          const SizedBox(height: 24),
+          Text('방명록', style: Theme.of(context).textTheme.titleMedium),
+          CommentSection(
+            kind: CommentKind.trip,
+            targetId: trip.id,
+            coupleId: archived ?? scope?.coupleId,
+            tripId: trip.id,
+          ),
+          // 사진 더하기 버튼에 마지막 글이 가리지 않게 한다
+          const SizedBox(height: 72),
         ],
       ),
       floatingActionButton: readOnly

@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../data/repositories/repository_providers.dart';
 import '../album/album_providers.dart';
+import '../album/comments.dart';
 import '../auth/auth_state.dart';
 import 'photo_sharing_page.dart';
 import 'scan_providers.dart';
@@ -127,6 +128,11 @@ final realtimeSyncProvider = Provider<void>((ref) {
     on('trips', refreshTrips);
     on('overrides', () => ref.invalidate(overridesProvider));
     on('photos', refreshPhotos);
+    on('comments', () {
+      ref
+        ..invalidate(commentsProvider)
+        ..invalidate(partnerCommentTimesProvider);
+    });
     on('couple', () {
       ref
         ..invalidate(currentCoupleProvider)

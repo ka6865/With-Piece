@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/supabase/supabase_providers.dart';
 import 'account_repository.dart';
 import 'auth_repository.dart';
+import 'comment_repository.dart';
 import 'couple_repository.dart';
 import 'photo_day_repository.dart';
 import 'photo_library_repository.dart';
@@ -39,4 +40,8 @@ final photoLibraryRepositoryProvider = Provider<PhotoLibraryRepository>(
 
 final accountRepositoryProvider = Provider<AccountRepository>(
   (ref) => AccountRepository(ref.watch(supabaseClientProvider)),
+);
+
+final commentRepositoryProvider = Provider<CommentRepository>(
+  (ref) => CommentRepository(ref.watch(supabaseClientProvider)),
 );
