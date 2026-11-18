@@ -330,4 +330,28 @@ void main() {
     expect(couples.startedOnCalls, isEmpty);
     expect(find.text('저장하지 못했어요'), findsOneWidget);
   });
+
+  testWidgets('커플 재조회를 기다리는 동안 날짜 버튼을 다시 누를 수 없다', (tester) async {
+    Completer<Couple>? reload;
+    await pumpPage(
+      tester,
+      loadCouple: (ref) {
+        final couple = ref.watch(dateContextProvider).couple;
+        return reload?.future ?? Future.value(couple);
+      },
+    );
+    reload = Completer<Couple>();
+    ProviderScope.containerOf(
+      tester.element(find.byType(StartedOnPage)),
+    ).invalidate(currentCoupleProvider);
+    await chooseDate(tester, '01/01/2019');
+    expect(
+      tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
+      isNull,
+    );
+    reload.complete(
+      Couple(id: 'c1', partnerId: 'p', startedOn: DateTime(2020, 1, 1)),
+    );
+    await tester.pumpAndSettle();
+  });
 }
