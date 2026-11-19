@@ -129,11 +129,18 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('2026.10.3 · 사진 7장'), findsOneWidget);
+    // 기준일 이전 승인은 숨겨 속초는 한 번, 하루만 남는다
+    expect(find.text('1번 · 1일'), findsOneWidget);
     expect(find.byType(CheckboxListTile), findsOneWidget);
+    await tester.tap(find.byTooltip('펼치기'));
+    await tester.pumpAndSettle();
+    expect(find.text('1일 · 사진 7장'), findsOneWidget);
+    expect(find.text('2026.10.3'), findsOneWidget);
     expect(
-      tester.widget<CheckboxListTile>(find.byType(CheckboxListTile)).value,
-      true,
+      tester
+          .widgetList<CheckboxListTile>(find.byType(CheckboxListTile))
+          .every((t) => t.value == true),
+      isTrue,
     );
   });
 
@@ -427,6 +434,65 @@ void main() {
     expect(find.text('저장 중'), findsNothing);
     // 저장이 곧 최신화다
     expect(refresh.marks, 1);
+  });
+
+  testWidgets('지역 → 다녀온 번으로 묶어 고르고 사는 곳은 맨 아래에 접는다', (tester) async {
+    PhotoDay jeju(int m, int d) => PhotoDay(DateTime(2025, m, d), 'jeju');
+    PhotoDay osan(int d) => PhotoDay(DateTime(2025, 9, d), 'osan');
+    Map<PhotoDay, bool>? saved;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sessionUserIdProvider.overrideWithValue('me'),
+          currentCoupleProvider.overrideWith(
+            (ref) async =>
+                const Couple(id: 'c1', partnerId: 'p', myHomeRegionId: 'osan'),
+          ),
+          photoSharingChoicesProvider.overrideWith(
+            (ref) async => PhotoSharingChoices(
+              coupleId: 'c1',
+              days: {
+                jeju(5, 1): 40,
+                jeju(5, 2): 50,
+                jeju(8, 10): 5,
+                osan(1): 1,
+                osan(2): 1,
+              },
+              approved: {},
+              names: {'jeju': '제주시', 'osan': '오산시'},
+            ),
+          ),
+          savePhotoSharingProvider.overrideWithValue((choices, days) async {
+            saved = days;
+            return const Ok(null);
+          }),
+        ],
+        child: const MaterialApp(home: PhotoSharingPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final titles = tester
+        .widgetList<CheckboxListTile>(find.byType(CheckboxListTile))
+        .map((t) => (t.title as Text).data)
+        .toList();
+    expect(titles, ['제주시', '오산시 · 사는 곳']);
+    expect(find.text('2번 · 3일'), findsOneWidget);
+    // 다녀온 번 하나만 고르면 지역은 중간 상태다
+    await tester.tap(find.byTooltip('펼치기').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('2025.5.1~2025.5.2'));
+    await tester.pump();
+    CheckboxListTile region() => tester.widget<CheckboxListTile>(
+      find.widgetWithText(CheckboxListTile, '제주시'),
+    );
+    expect(region().value, isNull);
+    // 중간 상태에서 지역을 누르면 모두 고른다
+    await tester.tap(find.text('제주시'));
+    await tester.pump();
+    expect(region().value, isTrue);
+    await tester.tap(find.text('비교 범위 저장'));
+    await tester.pumpAndSettle();
+    expect(saved, {jeju(5, 1): true, jeju(5, 2): true, jeju(8, 10): true});
   });
 }
 

@@ -213,16 +213,20 @@ void main() {
     );
     await tester.tap(find.text('열기'));
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 4500));
+    final dPlus = find.text(
+      'D+${daysTogether(DateTime(2025, 6, 24), DateTime(2026, 11, 20))}',
+    );
+    // 사귄 날에 닿은 뒤 1초 동안 머문다
+    await tester.pump(const Duration(milliseconds: 4600));
     expect(find.text('2025.06.24'), findsOneWidget);
     expect(find.text('우리가 시작한 날'), findsOneWidget);
-    await tester.pump(const Duration(milliseconds: 2500));
-    expect(
-      find.text(
-        'D+${daysTogether(DateTime(2025, 6, 24), DateTime(2026, 11, 20))}',
-      ),
-      findsOneWidget,
-    );
+    await tester.pump(const Duration(milliseconds: 800));
+    expect(find.text('2025.06.24'), findsOneWidget);
+    // 세어 올라온 D+N에서 마지막 1초 동안 머문다
+    await tester.pump(const Duration(milliseconds: 2700));
+    expect(dPlus, findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 800));
+    expect(dPlus, findsOneWidget);
     await tester.pumpAndSettle();
     expect(find.text('열기'), findsOneWidget);
     await tester.tap(find.text('열기'));

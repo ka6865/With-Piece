@@ -76,6 +76,14 @@ class FakeCoupleRepository implements CoupleRepository {
     return const Ok(null);
   }
 
+  final homeRegions = <String>[];
+
+  @override
+  Future<Result<void>> setHomeRegion(String regionId) async {
+    homeRegions.add(regionId);
+    return const Ok(null);
+  }
+
   int archives = 0;
 
   @override

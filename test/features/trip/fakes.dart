@@ -45,12 +45,17 @@ class FakeTripRepository implements TripRepository {
   Future<Result<Map<String, OverrideKind>>> overrides(String coupleId) async =>
       const Ok({});
 
+  final overrideCalls = <(String, OverrideKind?)>[];
+
   @override
   Future<Result<void>> setOverride(
     String coupleId,
     String regionId,
     OverrideKind? kind,
-  ) async => const Ok(null);
+  ) async {
+    overrideCalls.add((regionId, kind));
+    return const Ok(null);
+  }
 
   @override
   Future<Result<void>> addRegions(

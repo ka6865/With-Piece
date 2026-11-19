@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../features/scan/realtime_sync.dart';
@@ -16,6 +17,10 @@ class WooriPieceApp extends ConsumerWidget {
       theme: lightTheme,
       darkTheme: darkTheme,
       themeMode: ThemeMode.system,
+      // 한국어 전용 앱이라 기기 언어와 상관없이 달력·버튼 문구를 한국어로 둔다
+      locale: const Locale('ko', 'KR'),
+      supportedLocales: const [Locale('ko', 'KR')],
+      localizationsDelegates: GlobalMaterialLocalizations.delegates,
       routerConfig: ref.watch(routerProvider),
     );
   }

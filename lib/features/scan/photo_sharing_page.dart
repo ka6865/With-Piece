@@ -10,6 +10,7 @@ import '../auth/auth_state.dart';
 import '../refresh/refresh_providers.dart';
 import 'photo_days.dart';
 import 'scan_providers.dart';
+import 'sharing_groups.dart';
 import 'trip_candidates.dart';
 
 class PhotoSharingChoices {
@@ -101,6 +102,109 @@ class _PhotoSharingPageState extends ConsumerState<PhotoSharingPage> {
   bool _saving = false;
   String? _error;
 
+  // 펼친 지역 id와 다녀온 번(지역 id + 시작일)
+  final _expanded = <String>{};
+
+  bool _selected(PhotoSharingChoices data, PhotoDay day) =>
+      _changes[day] ?? data.approved.contains(day);
+
+  // 모두 선택이면 true, 하나도 없으면 false, 일부면 null(중간 상태)
+  bool? _stateOf(PhotoSharingChoices data, Iterable<PhotoDay> days) {
+    final values = days.map((d) => _selected(data, d)).toSet();
+    return values.length == 1 ? values.single : null;
+  }
+
+  void _setAll(Iterable<PhotoDay> days, bool selected) => setState(() {
+    for (final day in days) {
+      _changes[day] = selected;
+    }
+  });
+
+  Widget _toggle(String key) => IconButton(
+    tooltip: _expanded.contains(key) ? '접기' : '펼치기',
+    icon: Icon(_expanded.contains(key) ? Icons.expand_less : Icons.expand_more),
+    onPressed: () => setState(
+      () =>
+          _expanded.contains(key) ? _expanded.remove(key) : _expanded.add(key),
+    ),
+  );
+
+  // 지역 → 다녀온 번 → 날짜. 펼친 것만 줄로 만든다
+  List<Widget> _rows(
+    PhotoSharingChoices data,
+    List<SharingRegionGroup> groups,
+  ) {
+    String date(DateTime d) => '${d.year}.${d.month}.${d.day}';
+    CheckboxListTile tile({
+      required Iterable<PhotoDay> days,
+      required Widget title,
+      Widget? subtitle,
+      Widget? secondary,
+      double indent = 0,
+    }) {
+      final value = _stateOf(data, days);
+      return CheckboxListTile(
+        tristate: true,
+        value: value,
+        title: title,
+        subtitle: subtitle,
+        secondary: secondary,
+        controlAffinity: ListTileControlAffinity.leading,
+        contentPadding: EdgeInsetsDirectional.only(start: 16 + indent, end: 8),
+        // 중간 상태에서 누르면 모두 선택한다
+        onChanged: _saving ? null : (_) => _setAll(days, value != true),
+      );
+    }
+
+    return [
+      for (final group in groups) ...[
+        tile(
+          days: group.days,
+          title: Text(
+            group.isHome
+                ? '${data.names[group.regionId] ?? group.regionId} · 사는 곳'
+                : data.names[group.regionId] ?? group.regionId,
+          ),
+          subtitle: Text(
+            group.isHome
+                ? '${_count(group.dayCount)}일'
+                : '${group.visits.length}번 · ${group.dayCount}일',
+          ),
+          secondary: _toggle(group.regionId),
+        ),
+        if (_expanded.contains(group.regionId))
+          for (final visit in group.visits) ...[
+            tile(
+              days: visit.days,
+              indent: 24,
+              title: Text(
+                visit.days.length == 1
+                    ? date(visit.start)
+                    : '${date(visit.start)}~${date(visit.end)}',
+              ),
+              subtitle: Text('${visit.days.length}일 · 사진 ${visit.photoCount}장'),
+              secondary: visit.days.length == 1
+                  ? null
+                  : _toggle('${group.regionId}|${visit.start}'),
+            ),
+            if (_expanded.contains('${group.regionId}|${visit.start}'))
+              for (final day in visit.days)
+                tile(
+                  days: [day],
+                  indent: 48,
+                  title: Text(date(day.day)),
+                  subtitle: Text('사진 ${data.days[day]}장'),
+                ),
+          ],
+      ],
+    ];
+  }
+
+  static String _count(int n) => n.toString().replaceAllMapped(
+    RegExp(r'\B(?=(\d{3})+(?!\d))'),
+    (_) => ',',
+  );
+
   @override
   Widget build(BuildContext context) {
     final userId = ref.watch(sessionUserIdProvider);
@@ -118,11 +222,14 @@ class _PhotoSharingPageState extends ConsumerState<PhotoSharingPage> {
       _saving = false;
       _error = null;
     }
-    final days = data?.days.keys.toList() ?? <PhotoDay>[];
-    days.sort((a, b) {
-      final date = b.day.compareTo(a.day);
-      return date == 0 ? a.regionId.compareTo(b.regionId) : date;
-    });
+    final homeRegionId = ref
+        .watch(scopedCurrentCoupleProvider)
+        .value
+        ?.myHomeRegionId;
+    final groups = data == null
+        ? const <SharingRegionGroup>[]
+        : groupSharingDays(data.days, homeRegionId: homeRegionId);
+    final rows = data == null ? const <Widget>[] : _rows(data, groups);
     return Scaffold(
       appBar: AppBar(title: const Text('비교할 기록 선택')),
       body: data == null
@@ -156,28 +263,13 @@ class _PhotoSharingPageState extends ConsumerState<PhotoSharingPage> {
                     padding: const EdgeInsets.all(16),
                     child: Text(_error!),
                   ),
-                if (days.isEmpty)
+                if (groups.isEmpty)
                   const Expanded(child: Center(child: Text('비교할 사진 기록이 없어요')))
                 else
                   Expanded(
                     child: ListView.builder(
-                      itemCount: days.length,
-                      itemBuilder: (context, index) {
-                        final day = days[index];
-                        return CheckboxListTile(
-                          value: _changes[day] ?? data.approved.contains(day),
-                          title: Text(data.names[day.regionId] ?? day.regionId),
-                          subtitle: Text(
-                            '${day.day.year}.${day.day.month}.${day.day.day} · 사진 ${data.days[day]}장',
-                          ),
-                          onChanged: _saving
-                              ? null
-                              : (checked) => setState(() {
-                                  final selected = checked == true;
-                                  _changes[day] = selected;
-                                }),
-                        );
-                      },
+                      itemCount: rows.length,
+                      itemBuilder: (context, index) => rows[index],
                     ),
                   ),
               ],

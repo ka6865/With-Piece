@@ -16,6 +16,7 @@ class Couple {
     this.startedOn,
     this.myName,
     this.partnerName,
+    this.myHomeRegionId,
   });
 
   final String id;
@@ -24,6 +25,8 @@ class Couple {
   // 홈의 이니셜 표시용 닉네임. 로그인 제공자가 이름을 주지 않으면 없다
   final String? myName;
   final String? partnerName;
+  // 내가 고른 사는 곳(users.home_region_id). 비교할 기록 목록에서 접는다
+  final String? myHomeRegionId;
 }
 
 // 아카이브된 커플. 기록은 읽기 전용으로 남는다(설계 14장)
@@ -113,6 +116,14 @@ class CoupleRepository {
     ),
   );
 
+  // 사는 곳은 사람에 속한다(설계 6.2 거주지). 본인 행만 고칠 수 있다
+  Future<Result<void>> setHomeRegion(String regionId) => guard(
+    () => _client
+        .from('users')
+        .update({'home_region_id': regionId})
+        .eq('id', _client.auth.currentUser!.id),
+  );
+
   Future<Result<void>> archive() => guard(() => _client.rpc('archive_couple'));
 
   Future<Result<Couple?>> current() => guard(() async {
@@ -121,7 +132,7 @@ class CoupleRepository {
     final user = await _client
         .from('users')
         .select(
-          'nickname, couple:couples!users_active_couple_fk(id, user_a_id, user_b_id, started_on, '
+          'nickname, home_region_id, couple:couples!users_active_couple_fk(id, user_a_id, user_b_id, started_on, '
           'a:users!couples_user_a_id_fkey(nickname), b:users!couples_user_b_id_fkey(nickname))',
         )
         .eq('id', me)
@@ -137,6 +148,7 @@ class CoupleRepository {
       startedOn: startedOn == null ? null : DateTime.parse(startedOn),
       myName: user['nickname'] as String?,
       partnerName: partner?['nickname'] as String?,
+      myHomeRegionId: user['home_region_id'] as String?,
     );
   });
 
