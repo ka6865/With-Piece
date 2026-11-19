@@ -96,7 +96,14 @@ class _StartedOnPageState extends ConsumerState<StartedOnPage> {
                         return (!couple.hasError, couple.value?.startedOn);
                       }
 
-                      final today = DateTime.now();
+                      final korea = DateTime.now().toUtc().add(
+                        const Duration(hours: 9),
+                      );
+                      final today = DateTime(
+                        korea.year,
+                        korea.month,
+                        korea.day,
+                      );
                       final date = await showDatePicker(
                         context: context,
                         firstDate: DateTime(1950),
@@ -117,7 +124,7 @@ class _StartedOnPageState extends ConsumerState<StartedOnPage> {
                           builder: (dialogContext) => AlertDialog(
                             title: const Text('사귄 날을 늦출까요?'),
                             content: const Text(
-                              '동기화하면 두 사람의 새 날짜 이전 스캔 기록과 비교 승인이 삭제돼요. '
+                              '변경하면 서버에 있는 두 사람의 새 날짜 이전 스캔 기록과 비교 승인이 삭제돼요. '
                               '삭제된 비교 승인은 날짜를 다시 앞당겨도 다시 선택해야 해요.',
                             ),
                             actions: [

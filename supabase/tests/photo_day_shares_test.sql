@@ -38,7 +38,10 @@ select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000
 select update_photo_day_shares('10000000-0000-0000-0000-000000000001', '[]', '[{"day":"2026-10-03","region_id":"32060"}]');
 select is((select count(*)::int from couple_matched_days()), 0, '승인 철회 즉시 비교 대상에서 빠진다');
 select update_photo_day_shares('10000000-0000-0000-0000-000000000001', '[{"day":"2026-10-03","region_id":"32060","photo_count":1}]', '[]');
-delete from photo_days where day = '2026-10-03';
+reset role;
+delete from photo_days where user_id = '00000000-0000-0000-0000-0000000000a1'
+  and day = '2026-10-03';
+set local role authenticated;
 select is((select count(*)::int from photo_day_shares), 0, '원본 삭제는 승인도 삭제한다');
 select archive_couple();
 select throws_ok($$ select update_photo_day_shares('10000000-0000-0000-0000-000000000001', '[]', '[]') $$,

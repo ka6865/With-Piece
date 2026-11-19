@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 import '../../core/result/result.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../data/repositories/repository_providers.dart';
+import '../scan/scan_providers.dart';
+import '../scan/scan_store.dart';
 
 final myDeletionDateProvider = FutureProvider.family<DateTime?, String>((
   ref,
@@ -55,11 +57,17 @@ class DeletionBanners extends ConsumerWidget {
                   switch (result) {
                     case Ok():
                       if (userId case final id?) {
+                        ScanStore.allowUserAfterDeletionCanceled(id);
                         ref.invalidate(myDeletionDateProvider(id));
+                        ref.invalidate(partnerDeletionDatesProvider(id));
+                        ref
+                          ..invalidate(scanSnapshotProvider(id))
+                          ..invalidate(photoDaysSyncedProvider);
                       }
                     case Err(error: AppError.validation):
                       if (userId case final id?) {
                         ref.invalidate(myDeletionDateProvider(id));
+                        ref.invalidate(partnerDeletionDatesProvider(id));
                       }
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(

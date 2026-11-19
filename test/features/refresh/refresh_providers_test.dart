@@ -35,6 +35,11 @@ void main() {
       canRequestRefresh(sent, 'me', now.add(const Duration(hours: 1))),
       isTrue,
     );
+    final processed = RefreshState(
+      refreshedAt: now,
+      lastRequestedAt: now.subtract(const Duration(minutes: 30)),
+    );
+    expect(canRequestRefresh(processed, 'me', now), isFalse);
     expect(canRequestRefresh(null, 'me', now), isTrue);
   });
 

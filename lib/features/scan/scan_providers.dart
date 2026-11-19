@@ -7,6 +7,7 @@ import '../../data/repositories/trip_repository.dart';
 import '../../map_data/geo_region_locator.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../map_data/map_asset_loader.dart';
+import '../auth/account_state.dart';
 import '../auth/auth_state.dart';
 import 'home_regions.dart';
 import 'progress.dart';
@@ -23,19 +24,42 @@ final regionLocatorProvider = FutureProvider<GeoRegionLocator>(
       GeoRegionLocator(await ref.watch(regionMapAssetProvider.future)),
 );
 
-final scanStoreProvider = FutureProvider<ScanStore>(
-  (ref) async => ScanStore(await getApplicationDocumentsDirectory()),
-);
+final scanStoreProvider = FutureProvider.family<ScanStore, String>((
+  ref,
+  userId,
+) async {
+  final documents = await getApplicationDocumentsDirectory();
+  try {
+    await ScanStore.removeLegacySharedCache(documents);
+  } catch (_) {}
+  return ScanStore(await getApplicationCacheDirectory(), userId: userId);
+});
 
 // 처음 읽을 때 사진 권한을 묻는다. 권한이 없으면 AppError.photoPermission
-final scanSnapshotProvider = FutureProvider<ScanSnapshot>((ref) async {
-  final scanner = Scanner(
-    ref.watch(photoLibraryRepositoryProvider),
-    await ref.watch(regionLocatorProvider.future),
-    await ref.watch(scanStoreProvider.future),
-  );
-  return (await scanner.scan()).valueOrThrow;
-});
+final scanSnapshotProvider = FutureProvider.family<ScanSnapshot, String>(
+  (ref, userId) async {
+    if (ref.watch(sessionUserIdProvider) != userId) return ScanSnapshot.empty;
+    DateTime? deletionDate;
+    try {
+      deletionDate = await ref.watch(myDeletionDateProvider(userId).future);
+    } catch (_) {}
+    if (deletionDate != null) {
+      ScanStore.blockUser(userId);
+      return ScanSnapshot.empty;
+    }
+    final store = await ref.watch(scanStoreProvider(userId).future);
+    if (store.isDeletionPending) return ScanSnapshot.empty;
+    final scanner = Scanner(
+      ref.watch(photoLibraryRepositoryProvider),
+      await ref.watch(regionLocatorProvider.future),
+      store,
+    );
+    return (await scanner.scan()).valueOrThrow;
+  },
+  retry: (count, error) => error == AppError.photoPermission
+      ? null
+      : ProviderContainer.defaultRetry(count, error),
+);
 
 final scanSyncProvider = Provider<ScanSync>(
   (ref) => ScanSync(
@@ -55,7 +79,7 @@ final photoDaysSyncedProvider = FutureProvider<void>((ref) async {
   final startedOn = couple?.startedOn;
   if (couple == null || startedOn == null || cancelled) return;
   final sync = ref.watch(scanSyncProvider);
-  final snapshotFuture = ref.watch(scanSnapshotProvider.future);
+  final snapshotFuture = ref.watch(scanSnapshotProvider(userId).future);
   final snapshot = await snapshotFuture;
   if (cancelled || !ref.mounted || ref.read(sessionUserIdProvider) != userId) {
     return;

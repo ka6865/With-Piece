@@ -8,6 +8,7 @@ import '../../core/supabase/supabase_providers.dart';
 import '../../data/repositories/repository_providers.dart';
 import '../album/album_providers.dart';
 import '../album/comments.dart';
+import '../auth/account_state.dart';
 import '../auth/auth_state.dart';
 import '../map/region_covers.dart';
 import '../refresh/refresh_providers.dart';
@@ -29,15 +30,13 @@ final realtimeSyncProvider = Provider<void>((ref) {
       client.auth.currentUser?.id == userId &&
       ref.read(sessionUserIdProvider) == userId;
 
-  void refreshTrips() {
+  void refreshArchive() {
+    if (!isCurrent()) return;
     ref
-      ..invalidate(tripsProvider)
-      ..invalidate(archivedTripsProvider);
-  }
-
-  void refreshPhotos() {
-    ref
-      ..invalidate(couplePhotosProvider)
+      ..invalidate(myDeletionDateProvider(userId))
+      ..invalidate(partnerDeletionDatesProvider(userId))
+      ..invalidate(archivedCouplesProvider)
+      ..invalidate(archivedTripsProvider)
       ..invalidate(archivedPhotosProvider);
   }
 
@@ -49,20 +48,20 @@ final realtimeSyncProvider = Provider<void>((ref) {
 
   void refreshCouple() {
     if (!isCurrent()) return;
-    refreshTrips();
-    refreshPhotos();
     refreshComments();
     ref
+      ..invalidate(tripsProvider)
+      ..invalidate(couplePhotosProvider)
       ..invalidate(overridesProvider)
       ..invalidate(refreshStatesProvider)
       ..invalidate(regionCoversProvider)
-      ..invalidate(currentCoupleProvider)
-      ..invalidate(archivedCouplesProvider);
+      ..invalidate(currentCoupleProvider);
   }
 
   void refreshAll() {
     if (!isCurrent()) return;
     refreshCouple();
+    refreshArchive();
     ref.invalidate(matchedDaysProvider);
   }
 
@@ -75,9 +74,8 @@ final realtimeSyncProvider = Provider<void>((ref) {
 
   void refreshMembership() {
     if (!isCurrent()) return;
-    ref
-      ..invalidate(currentCoupleProvider)
-      ..invalidate(archivedCouplesProvider);
+    ref.invalidate(currentCoupleProvider);
+    refreshArchive();
   }
 
   void subscribe(
@@ -107,10 +105,13 @@ final realtimeSyncProvider = Provider<void>((ref) {
     });
   }
 
-  final userChannel = client.channel(
-    'user:$userId',
-    opts: const RealtimeChannelConfig(private: true),
-  )..onBroadcast(event: 'membership', callback: (_) => refreshMembership());
+  final userChannel =
+      client.channel(
+          'user:$userId',
+          opts: const RealtimeChannelConfig(private: true),
+        )
+        ..onBroadcast(event: 'membership', callback: (_) => refreshMembership())
+        ..onBroadcast(event: 'archive', callback: (_) => refreshArchive());
   subscribe(userChannel, refreshMembership, onStatus: onUserChannel);
 
   // 재조회 중에는 기존 구독을 유지하고, 확인된 ID가 달라졌을 때만 교체한다.
@@ -136,17 +137,13 @@ final realtimeSyncProvider = Provider<void>((ref) {
         if (isCurrent() && coupleId == nextId) refresh();
       },
     );
-    on('trips', refreshTrips);
+    on('trips', () => ref.invalidate(tripsProvider));
     on('overrides', () => ref.invalidate(overridesProvider));
-    on('photos', refreshPhotos);
+    on('photos', () => ref.invalidate(couplePhotosProvider));
     on('comments', refreshComments);
     on('refresh', () => ref.invalidate(refreshStatesProvider));
     on('covers', () => ref.invalidate(regionCoversProvider));
-    on('couple', () {
-      ref
-        ..invalidate(currentCoupleProvider)
-        ..invalidate(archivedCouplesProvider);
-    });
+    on('couple', refreshMembership);
     subscribe(channel, () {
       if (coupleId == nextId) refreshCouple();
     });
@@ -170,9 +167,9 @@ final realtimeSyncProvider = Provider<void>((ref) {
     onResume: () {
       if (!isCurrent()) return;
       if (coupleId != null) {
-        ref.invalidate(scanSnapshotProvider);
-      } else if (ref.exists(scanSnapshotProvider) &&
-          ref.read(scanSnapshotProvider).hasError) {
+        ref.invalidate(scanSnapshotProvider(userId));
+      } else if (ref.exists(scanSnapshotProvider(userId)) &&
+          ref.read(scanSnapshotProvider(userId)).hasError) {
         // 혼자일 때는 이미 실패한 스캔만, 설정에서 전체 접근을 허용하고 돌아왔을 때
         // 다시 한다. 권한 창을 다시 띄우지 않도록 상태만 확인한다
         unawaited(
@@ -180,7 +177,9 @@ final realtimeSyncProvider = Provider<void>((ref) {
               .read(photoLibraryRepositoryProvider)
               .hasFullAccess()
               .then((ok) {
-                if (ok && isCurrent()) ref.invalidate(scanSnapshotProvider);
+                if (ok && isCurrent()) {
+                  ref.invalidate(scanSnapshotProvider(userId));
+                }
               })
               // 확인에 실패하면 스캔 오류를 그대로 두고 다음 복귀에서 다시 확인한다
               .catchError((Object _) {}),

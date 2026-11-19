@@ -10,9 +10,13 @@ void main() {
 
   setUp(() {
     dir = Directory.systemTemp.createTempSync('scan_store');
-    store = ScanStore(dir);
+    ScanStore.allowUserAfterDeletionCanceled('user-a');
+    store = ScanStore(dir, userId: 'user-a');
   });
-  tearDown(() => dir.deleteSync(recursive: true));
+  tearDown(() {
+    ScanStore.allowUserAfterDeletionCanceled('user-a');
+    dir.deleteSync(recursive: true);
+  });
 
   final sokcho = PhotoDay(DateTime(2026, 10, 3), '32060');
   final goseong = PhotoDay(DateTime(2026, 10, 4), '32400');
@@ -31,7 +35,7 @@ void main() {
 
   test('쓰다 남은 임시 파일이 있어도 이전 내용을 읽는다', () async {
     await store.write(ScanSnapshot({sokcho: 2}, DateTime(2026, 11, 1)));
-    File('${dir.path}/photo_days.json.tmp').writeAsStringSync('{"깨진');
+    File('${dir.path}/user-a/photo_days.json.tmp').writeAsStringSync('{"깨진');
     expect((await store.read()).days, {sokcho: 2});
   });
 
@@ -50,5 +54,28 @@ void main() {
     );
     await store.write(ScanSnapshot({goseong: 4}, DateTime(2026, 11, 3)));
     expect((await store.read()).days, {goseong: 4});
+  });
+
+  test('계정마다 캐시가 분리되고 탈퇴한 계정의 캐시만 지운다', () async {
+    final other = ScanStore(dir, userId: 'user-b');
+    await store.write(ScanSnapshot({sokcho: 2}, DateTime(2026, 11, 1)));
+    await other.write(ScanSnapshot({goseong: 3}, DateTime(2026, 11, 2)));
+
+    store.blockForDeletion();
+    await store.clearForDeletion();
+
+    expect((await store.read()).days, isEmpty);
+    expect((await other.read()).days, {goseong: 3});
+    expect(store.isDeletionPending, isTrue);
+  });
+
+  test('공용 문서 폴더의 이전 스캔 캐시와 임시 파일을 지운다', () async {
+    File('${dir.path}/photo_days.json').writeAsStringSync('legacy');
+    File('${dir.path}/photo_days.json.tmp').writeAsStringSync('legacy');
+
+    await ScanStore.removeLegacySharedCache(dir);
+
+    expect(await File('${dir.path}/photo_days.json').exists(), isFalse);
+    expect(await File('${dir.path}/photo_days.json.tmp').exists(), isFalse);
   });
 }

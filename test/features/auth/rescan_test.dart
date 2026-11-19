@@ -40,7 +40,7 @@ void main() {
     );
     var refreshed = false;
     final result = await rescan(
-      Scanner(library, locator, ScanStore(directory)),
+      Scanner(library, locator, ScanStore(directory, userId: 'user-a')),
       () => refreshed = true,
     );
 
@@ -53,7 +53,7 @@ void main() {
     final library = FakePhotoLibrary(const Err(AppError.photoPermission));
     var refreshed = false;
     final result = await rescan(
-      Scanner(library, locator, ScanStore(directory)),
+      Scanner(library, locator, ScanStore(directory, userId: 'user-a')),
       () => refreshed = true,
     );
 

@@ -12,6 +12,7 @@ import 'auth_state.dart';
 import 'login_page.dart';
 import '../scan/rescan.dart';
 import '../scan/scan_providers.dart';
+import '../scan/scan_store.dart';
 
 // 여러 로그인 방법을 한 계정에 묶는다. Kakao는 이메일이 없어 자동 연동되지 않는다(설계 10.2)
 class AccountLinksPage extends ConsumerStatefulWidget {
@@ -48,6 +49,7 @@ class _AccountLinksPageState extends ConsumerState<AccountLinksPage> {
         ? const AsyncLoading<List<UserIdentity>>()
         : ref.watch(identitiesProvider(userId));
     void toastOnError(Result<void> result) {
+      if (!mounted) return;
       if (result is Err && context.mounted) {
         ScaffoldMessenger.of(
           context,
@@ -132,22 +134,40 @@ class _AccountLinksPageState extends ConsumerState<AccountLinksPage> {
               ),
               onTap: () async {
                 if (!await _confirmDeletion(context)) return;
-                final result = await ref
-                    .read(accountRepositoryProvider)
-                    .requestDeletion();
-                toastOnError(result);
+                final deletingUserId = ref.read(sessionUserIdProvider);
+                final accountRepository = ref.read(accountRepositoryProvider);
+                final scanSync = ref.read(scanSyncProvider);
+                final scanStoreFuture = deletingUserId == null
+                    ? null
+                    : ref.read(scanStoreProvider(deletingUserId).future);
+                final result = await accountRepository.requestDeletion();
                 if (result is Ok) {
-                  final userId = ref.read(sessionUserIdProvider);
-                  if (userId != null) {
-                    await ref.read(scanSyncProvider).clearForUser(userId);
-                    ref
-                      ..invalidate(scanSnapshotProvider)
-                      ..invalidate(photoDaysSyncedProvider);
+                  if (deletingUserId != null) {
+                    ScanStore.blockUser(deletingUserId);
+                    try {
+                      await (await scanStoreFuture!).clearForDeletion();
+                    } catch (_) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('기기 스캔 기록을 지우지 못했어요')),
+                        );
+                      }
+                    }
+                    await scanSync.clearForUser(deletingUserId);
                   }
                 }
-                ref
-                  ..invalidate(currentCoupleProvider)
-                  ..invalidate(myDeletionDateProvider);
+                if (!mounted) return;
+                toastOnError(result);
+                if (result is Ok &&
+                    deletingUserId != null &&
+                    ref.read(sessionUserIdProvider) == deletingUserId) {
+                  ref.invalidate(partnerDeletionDatesProvider(deletingUserId));
+                  ref
+                    ..invalidate(scanSnapshotProvider(deletingUserId))
+                    ..invalidate(photoDaysSyncedProvider)
+                    ..invalidate(myDeletionDateProvider(deletingUserId))
+                    ..invalidate(currentCoupleProvider);
+                }
               },
             ),
           ],

@@ -171,7 +171,7 @@ void main() {
             ref.watch(sessionUserIdProvider);
             return couple;
           }),
-          scanSnapshotProvider.overrideWith((ref) => pending.future),
+          scanSnapshotProvider.overrideWith((ref, userId) => pending.future),
           scanSyncProvider.overrideWithValue(sync),
         ],
       );

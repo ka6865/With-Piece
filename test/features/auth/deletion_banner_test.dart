@@ -70,6 +70,19 @@ void main() {
     expect(repo.cancels, 1);
   });
 
+  testWidgets('삭제 취소가 성공하면 배너를 새 상태로 갱신한다', (tester) async {
+    final repo = await pump(
+      tester,
+      mineSequence: [DateTime(2026, 12, 17), null],
+    );
+
+    await tester.tap(find.text('삭제 취소'));
+    await tester.pumpAndSettle();
+
+    expect(repo.cancels, 1);
+    expect(find.textContaining('계정이 삭제돼요'), findsNothing);
+  });
+
   testWidgets('삭제 취소 요청 상태가 바뀌면 일정을 다시 조회하고 안내한다', (tester) async {
     final repo = await pump(
       tester,

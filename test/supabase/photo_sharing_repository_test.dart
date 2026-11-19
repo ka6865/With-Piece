@@ -88,12 +88,17 @@ Future<void> main() async {
             ),
       ),
     );
-    await client.from('photo_days').insert({
-      'user_id': client.auth.currentUser!.id,
-      'day': '2026-10-03',
-      'region_id': '32060',
-      'photo_count': 4,
-    });
+    final partner = await signUpLocal();
+    addTearDown(partner.dispose);
+    final couple = CoupleRepository(client);
+    (await CoupleRepository(
+      partner,
+    ).join((await couple.createInvite()).valueOrThrow.code)).valueOrThrow;
+    (await couple.setStartedOn(DateTime(2026, 1, 1))).valueOrThrow;
+    final coupleId = (await couple.current()).valueOrThrow!.id;
+    (await PhotoDayRepository(client).sync(coupleId, {
+      PhotoDay(DateTime(2026, 10, 3), '32060'): 4,
+    })).valueOrThrow;
     final offsets = <int>[];
     final all = await fetchAll<Map<String, dynamic>>((from, to) {
       offsets.add(from);

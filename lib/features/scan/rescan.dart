@@ -2,7 +2,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/result/result.dart';
 import '../../data/repositories/repository_providers.dart';
+import '../../core/supabase/supabase_providers.dart';
+import '../auth/account_state.dart';
 import 'scan_providers.dart';
+import 'scan_store.dart';
 import 'scanner.dart';
 
 Future<Result<void>> rescan(Scanner scanner, void Function() onSuccess) async {
@@ -19,14 +22,26 @@ Future<Result<void>> rescan(Scanner scanner, void Function() onSuccess) async {
 // 설정(커플이 아닐 때)과 최신화 탭이 함께 쓰는 사진첩 전체 다시 읽기
 Future<Result<void>> rescanLibrary(WidgetRef ref) async {
   try {
+    final userId = ref.read(sessionUserIdProvider);
+    if (userId == null) return const Err(AppError.validation);
+    DateTime? deletionDate;
+    try {
+      deletionDate = await ref.read(myDeletionDateProvider(userId).future);
+    } catch (_) {}
+    if (deletionDate != null) {
+      ScanStore.blockUser(userId);
+      return const Err(AppError.validation);
+    }
+    final store = await ref.read(scanStoreProvider(userId).future);
+    if (store.isDeletionPending) return const Err(AppError.validation);
     return await rescan(
       Scanner(
         ref.read(photoLibraryRepositoryProvider),
         await ref.read(regionLocatorProvider.future),
-        await ref.read(scanStoreProvider.future),
+        store,
       ),
       () => ref
-        ..invalidate(scanSnapshotProvider)
+        ..invalidate(scanSnapshotProvider(userId))
         ..invalidate(photoDaysSyncedProvider),
     );
   } catch (_) {
