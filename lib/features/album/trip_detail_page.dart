@@ -238,29 +238,3 @@ Future<String?> _askTitle(BuildContext context, String current) {
     ),
   ).whenComplete(controller.dispose);
 }
-
-// 생활권 조각처럼 여행에 묶이지 않은 조각은 그 조각에서 찍은 사진만 모은다(설계 8.4)
-class RegionPhotosPage extends ConsumerWidget {
-  const RegionPhotosPage({super.key, required this.regionId});
-
-  final String regionId;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final scope = ref.watch(currentCoupleScopeProvider);
-    final names = ref.watch(regionNamesProvider).value ?? const {};
-    final photosState = scope == null
-        ? const AsyncLoading<List<PhotoRecord>>()
-        : ref.watch(scopedCouplePhotosProvider(scope));
-    final photos = [
-      ...?photosState.value?.where((p) => p.regionId == regionId),
-    ];
-    return Scaffold(
-      appBar: AppBar(title: Text(names[regionId] ?? regionId)),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [PhotoGrid(photos: photos)],
-      ),
-    );
-  }
-}

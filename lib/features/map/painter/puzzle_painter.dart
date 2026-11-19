@@ -1,7 +1,14 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
+import '../../../data/repositories/region_cover_repository.dart';
+import 'cover_fit.dart';
 import 'puzzle_layout.dart';
+
+// 조각에 채울 대표 사진. 이미지는 그리는 쪽이 아니라 불러온 쪽이 해제한다
+typedef CoverImage = ({ui.Image image, RegionCover cover});
 
 class PuzzlePainter extends CustomPainter {
   const PuzzlePainter({
@@ -13,6 +20,7 @@ class PuzzlePainter extends CustomPainter {
     this.showSea = false,
     this.compact = false,
     this.bordersOnly = false,
+    this.covers = const {},
   });
 
   static const hatchGap = 6.0;
@@ -32,6 +40,8 @@ class PuzzlePainter extends CustomPainter {
   // 전국 지도에서 조각 층 위에 시도 경계만 굵게 긋는다. 인셋 안은 조각 애셋과
   // 인셋 범위가 미세하게 달라 선이 어긋나므로 그리지 않는다(인셋 틀이 대신한다)
   final bool bordersOnly;
+  // 시도 화면에서 채운 조각을 면 색 대신 사진으로 채운다(조각채우기·최신화·대표사진 설계 4.3)
+  final Map<String, CoverImage> covers;
 
   static Path buildPath(ScaledPolygon polygon) {
     final path = Path()..fillType = PathFillType.evenOdd;
@@ -91,13 +101,22 @@ class PuzzlePainter extends CustomPainter {
     final hatch = Paint()
       ..color = colorScheme.tertiary
       ..strokeWidth = 1;
+    final drawnCovers = <String>{};
     for (final polygon in layout.polygons) {
       final path = buildPath(polygon);
       final home = homeRegionIds.contains(polygon.regionId);
       final visited = home || visitedRegionIds.contains(polygon.regionId);
-      canvas.drawPath(path, visited ? visitedFill : emptyFill);
+      final cover = visited ? covers[polygon.regionId] : null;
+      if (cover == null) {
+        canvas.drawPath(path, visited ? visitedFill : emptyFill);
+      } else if (drawnCovers.add(polygon.regionId)) {
+        _drawCover(canvas, polygon.regionId, cover);
+      }
       if (visited) _drawHighlight(canvas, path, highlight);
-      if (home) _drawHatch(canvas, path, polygon.bounds, hatch);
+      // 사진 위 빗금은 사진을 가린다. 사진이 있는 생활권은 민트 테두리로만 구분한다
+      if (home && cover == null) {
+        _drawHatch(canvas, path, polygon.bounds, hatch);
+      }
       // 채움 여부를 색만으로 구분하지 않도록 미방문 조각은 점선으로 그린다
       canvas.drawPath(
         visited || compact ? path : dashed(path),
@@ -108,6 +127,40 @@ class PuzzlePainter extends CustomPainter {
             : border,
       );
     }
+  }
+
+  // 조각의 모든 폴리곤을 한 틀로 잘라 사진을 그린다. 구도 기준은 본토 쪽 폴리곤의
+  // bbox다. 울릉군처럼 인셋에만 있으면 인셋 폴리곤을 쓴다
+  void _drawCover(Canvas canvas, String regionId, CoverImage cover) {
+    final polygons = [
+      for (final p in layout.polygons)
+        if (p.regionId == regionId) p,
+    ];
+    final mainland = polygons.where((p) => p.insetId == null).toList();
+    final bounds = (mainland.isEmpty ? polygons : mainland)
+        .map((p) => p.bounds)
+        .reduce((a, b) => a.expandToInclude(b));
+    final clip = Path()..fillType = PathFillType.evenOdd;
+    for (final p in polygons) {
+      clip.addPath(buildPath(p), Offset.zero);
+    }
+    final image = cover.image;
+    final src = Size(image.width.toDouble(), image.height.toDouble());
+    canvas.save();
+    canvas.clipPath(clip);
+    canvas.drawImageRect(
+      image,
+      Offset.zero & src,
+      coverImageRect(
+        bounds: bounds,
+        image: src,
+        scale: cover.cover.scale,
+        centerX: cover.cover.centerX,
+        centerY: cover.cover.centerY,
+      ),
+      Paint()..filterQuality = FilterQuality.medium,
+    );
+    canvas.restore();
   }
 
   // 조각 안쪽 왼쪽 위 가장자리에 밝은 선을 그어 살짝 볼록해 보이게 한다
@@ -156,7 +209,8 @@ class PuzzlePainter extends CustomPainter {
       oldDelegate.colorScheme != colorScheme ||
       oldDelegate.showSea != showSea ||
       oldDelegate.compact != compact ||
-      oldDelegate.bordersOnly != bordersOnly;
+      oldDelegate.bordersOnly != bordersOnly ||
+      oldDelegate.covers != covers;
 
   @override
   bool shouldRebuildSemantics(PuzzlePainter oldDelegate) =>
@@ -216,6 +270,7 @@ class MapLabelPainter extends CustomPainter {
     required this.regionNames,
     required this.colorScheme,
     required this.zoom,
+    this.backdropRegionIds = const {},
   });
 
   static const screenFontSize = 10.0;
@@ -225,6 +280,8 @@ class MapLabelPainter extends CustomPainter {
   final Map<String, String> regionNames;
   final ColorScheme colorScheme;
   final double zoom;
+  // 사진 위 이름은 옅은 바탕을 깔아 읽히게 한다
+  final Set<String> backdropRegionIds;
 
   double get fontSize => screenFontSize / zoom;
 
@@ -242,7 +299,18 @@ class MapLabelPainter extends CustomPainter {
       final name = regionNames[id];
       if (name == null) continue;
       final text = textOf(shortRegionName(name));
-      text.paint(canvas, point - Offset(text.width / 2, text.height / 2));
+      final topLeft = point - Offset(text.width / 2, text.height / 2);
+      if (backdropRegionIds.contains(id)) {
+        final pad = 2 / zoom;
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            (topLeft & text.size).inflate(pad),
+            Radius.circular(3 / zoom),
+          ),
+          Paint()..color = colorScheme.surface.withValues(alpha: 0.75),
+        );
+      }
+      text.paint(canvas, topLeft);
     }
     for (final MapEntry(key: id, value: rect) in layout.insetRects.entries) {
       final caption = insetCaptions[id];
@@ -256,5 +324,6 @@ class MapLabelPainter extends CustomPainter {
       oldDelegate.layout != layout ||
       oldDelegate.regionNames != regionNames ||
       oldDelegate.colorScheme != colorScheme ||
-      oldDelegate.zoom != zoom;
+      oldDelegate.zoom != zoom ||
+      oldDelegate.backdropRegionIds != backdropRegionIds;
 }
