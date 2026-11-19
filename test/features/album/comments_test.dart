@@ -23,6 +23,13 @@ class _FakeComments extends CommentRepository {
 
   final List<Comment> rows;
   final added = <String>[];
+  final edited = <String>[];
+
+  @override
+  Future<Result<void>> edit(CommentKind kind, String id, String content) async {
+    edited.add(content);
+    return const Ok(null);
+  }
 
   @override
   Future<Result<List<Comment>>> list(CommentKind kind, String targetId) async =>
@@ -48,6 +55,12 @@ final _rows = [
     createdAt: DateTime.utc(2026, 10, 4, 3),
   ),
   Comment(
+    id: 'g0',
+    authorId: 'ex',
+    content: '지난 사람 글',
+    createdAt: DateTime.utc(2026, 10, 4, 2),
+  ),
+  Comment(
     id: 'g2',
     authorId: 'p',
     content: '다음엔 겨울에',
@@ -55,6 +68,14 @@ final _rows = [
     updatedAt: DateTime.utc(2026, 10, 4, 5),
   ),
 ];
+
+class _User extends Notifier<String?> {
+  @override
+  String? build() => 'me';
+  void set(String? id) => state = id;
+}
+
+final _user = NotifierProvider<_User, String?>(_User.new);
 
 Future<_FakeComments> _pump(
   WidgetTester tester, {
@@ -67,7 +88,7 @@ Future<_FakeComments> _pump(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        sessionUserIdProvider.overrideWithValue('me'),
+        sessionUserIdProvider.overrideWith((ref) => ref.watch(_user)),
         sharedPreferencesProvider.overrideWithValue(prefs),
         commentRepositoryProvider.overrideWithValue(repo),
         currentCoupleProvider.overrideWith(
@@ -139,5 +160,35 @@ void main() {
       tester.element(find.byType(CommentSection)),
     );
     expect(container.read(commentSeenProvider.notifier).seenAt('me', 't1'), at);
+  });
+
+  testWidgets('지난 사람의 글에는 지금 상대 이름을 붙이지 않는다', (tester) async {
+    await _pump(tester);
+    expect(find.textContaining('상대 · '), findsOneWidget);
+    expect(find.textContaining('준호 · '), findsOneWidget);
+  });
+
+  testWidgets('내 글을 고쳐 저장해도 대화상자가 오류 없이 닫힌다', (tester) async {
+    final repo = await _pump(tester);
+    await tester.longPress(find.text('또 가자'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('고치기'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, '또 가자!');
+    await tester.tap(find.text('저장'));
+    await tester.pumpAndSettle();
+    expect(repo.edited, ['또 가자!']);
+    expect(find.text('글 고치기'), findsNothing);
+  });
+
+  testWidgets('창을 연 뒤 계정이 바뀌면 이전 계정의 글을 숨긴다', (tester) async {
+    await _pump(tester);
+    expect(find.text('또 가자'), findsOneWidget);
+    ProviderScope.containerOf(
+      tester.element(find.byType(CommentSection)),
+    ).read(_user.notifier).set('someone-else');
+    await tester.pump();
+    expect(find.text('또 가자'), findsNothing);
+    expect(find.text('계정이 바뀌어 글을 닫았어요'), findsOneWidget);
   });
 }

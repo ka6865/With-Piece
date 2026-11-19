@@ -78,5 +78,8 @@ begin
   end loop;
 end $$;
 
+-- 자동 권한 부여가 꺼진 프로젝트에서도 동작하도록 조회·삭제 권한을 명시한다.
+-- 어떤 행인지는 위 RLS가 판정한다
+grant select, delete on public.guestbook_entries, public.photo_comments to authenticated;
 grant insert (trip_id, couple_id, content) on public.guestbook_entries to authenticated;
 grant insert (photo_id, couple_id, content) on public.photo_comments to authenticated;

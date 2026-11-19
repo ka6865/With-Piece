@@ -39,10 +39,17 @@ final realtimeSyncProvider = Provider<void>((ref) {
       ..invalidate(archivedPhotosProvider);
   }
 
+  void refreshComments() {
+    ref
+      ..invalidate(commentsProvider)
+      ..invalidate(partnerCommentTimesProvider);
+  }
+
   void refreshCouple() {
     if (!isCurrent()) return;
     refreshTrips();
     refreshPhotos();
+    refreshComments();
     ref
       ..invalidate(overridesProvider)
       ..invalidate(currentCoupleProvider)
@@ -128,11 +135,7 @@ final realtimeSyncProvider = Provider<void>((ref) {
     on('trips', refreshTrips);
     on('overrides', () => ref.invalidate(overridesProvider));
     on('photos', refreshPhotos);
-    on('comments', () {
-      ref
-        ..invalidate(commentsProvider)
-        ..invalidate(partnerCommentTimesProvider);
-    });
+    on('comments', refreshComments);
     on('couple', () {
       ref
         ..invalidate(currentCoupleProvider)

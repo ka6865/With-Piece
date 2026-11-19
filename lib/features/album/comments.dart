@@ -10,12 +10,12 @@ import '../auth/auth_state.dart';
 // 방명록과 사진 댓글(설계 6.2). 상대 댓글은 Realtime 알림으로 다시 읽고, 푸시 전에는
 // 앨범의 "새 댓글" 표시로만 알린다
 
-typedef CommentTarget = ({CommentKind kind, String id});
+// 사용자 id를 키에 넣어 계정이 바뀌면 이전 계정으로 읽은 목록을 잇지 않는다
+typedef CommentTarget = ({CommentKind kind, String id, String userId});
 
 final commentsProvider = FutureProvider.autoDispose
     .family<List<Comment>, CommentTarget>((ref, target) async {
-      // 계정이 바뀌면 이전 계정으로 읽은 목록을 버린다
-      ref.watch(sessionUserIdProvider);
+      if (ref.watch(sessionUserIdProvider) != target.userId) return const [];
       final repository = ref.watch(commentRepositoryProvider);
       return (await repository.list(target.kind, target.id)).valueOrThrow;
     });
@@ -91,8 +91,11 @@ class CommentSection extends ConsumerStatefulWidget {
 class _CommentSectionState extends ConsumerState<CommentSection> {
   final _input = TextEditingController();
   bool _sending = false;
+  // 창을 연 계정. 바텀시트처럼 계정이 바뀌어도 남는 화면에서 이전 글을 숨긴다
+  late final String? _openedBy = ref.read(sessionUserIdProvider);
 
-  CommentTarget get _target => (kind: widget.kind, id: widget.targetId);
+  CommentTarget get _target =>
+      (kind: widget.kind, id: widget.targetId, userId: _openedBy ?? '');
 
   @override
   void dispose() {
@@ -134,30 +137,10 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
   }
 
   Future<void> _edit(Comment comment) async {
-    final controller = TextEditingController(text: comment.content);
     final content = await showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('글 고치기'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          maxLength: 200,
-          maxLines: null,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('취소'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, controller.text.trim()),
-            child: const Text('저장'),
-          ),
-        ],
-      ),
+      builder: (context) => _EditDialog(initial: comment.content),
     );
-    controller.dispose();
     if (content == null || content.isEmpty || content == comment.content) {
       return;
     }
@@ -223,9 +206,15 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
 
   @override
   Widget build(BuildContext context) {
+    final me = ref.watch(sessionUserIdProvider);
+    if (me == null || me != _openedBy) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 12),
+        child: Text('계정이 바뀌어 글을 닫았어요'),
+      );
+    }
     _markSeen();
     final theme = Theme.of(context);
-    final me = ref.watch(sessionUserIdProvider);
     final couple = ref.watch(scopedCurrentCoupleProvider).value;
     final coupleId = widget.coupleId;
     final writable = coupleId != null && couple?.id == coupleId;
@@ -265,7 +254,10 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
                       [
                         comment.authorId == me
                             ? '나'
-                            : couple?.partnerName ?? '상대',
+                            // 지난 커플의 글에 지금 상대 이름을 붙이지 않는다
+                            : comment.authorId == couple?.partnerId
+                            ? couple?.partnerName ?? '상대'
+                            : '상대',
                         _time(comment.createdAt),
                         if (comment.updatedAt != null) '수정됨',
                       ].join(' · '),
@@ -309,4 +301,45 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
     final minute = local.minute.toString().padLeft(2, '0');
     return '${local.month}.${local.day} ${local.hour}:$minute';
   }
+}
+
+// 컨트롤러 수명을 대화상자에 맞춰 닫히는 애니메이션 중에도 쓸 수 있게 한다
+class _EditDialog extends StatefulWidget {
+  const _EditDialog({required this.initial});
+
+  final String initial;
+
+  @override
+  State<_EditDialog> createState() => _EditDialogState();
+}
+
+class _EditDialogState extends State<_EditDialog> {
+  late final _controller = TextEditingController(text: widget.initial);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('글 고치기'),
+    content: TextField(
+      controller: _controller,
+      autofocus: true,
+      maxLength: 200,
+      maxLines: null,
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('취소'),
+      ),
+      FilledButton(
+        onPressed: () => Navigator.pop(context, _controller.text.trim()),
+        child: const Text('저장'),
+      ),
+    ],
+  );
 }

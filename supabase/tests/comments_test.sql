@@ -1,5 +1,5 @@
 begin;
-select plan(17);
+select plan(18);
 
 -- a·b 커플, c는 다른 커플. 여행 하나와 사진 하나
 insert into auth.users (id) values
@@ -75,5 +75,8 @@ select is((select count(*)::int from photo_comments), 0, '사진 삭제는 댓�
 select ok((select relrowsecurity from pg_class where oid = 'public.guestbook_entries'::regclass)
   and (select relrowsecurity from pg_class where oid = 'public.photo_comments'::regclass), '두 댓글 테이블 RLS 활성화');
 
+select ok(has_table_privilege('authenticated', 'public.guestbook_entries', 'SELECT, DELETE')
+  and has_table_privilege('authenticated', 'public.photo_comments', 'SELECT, DELETE'),
+  '자동 권한 부여 없이도 조회·삭제 권한이 있다');
 select * from finish();
 rollback;
