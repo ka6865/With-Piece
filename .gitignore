@@ -65,3 +65,4 @@ android/key.properties
 # 내부 설계 문서·계획서(공개 저장소에 올리지 않음). 로컬에만 둔다
 docs/superpowers/
 docs/원본_기술문서_텍스트.txt
+docs/reviews/2026-11-17-couple-design-proposal.md
