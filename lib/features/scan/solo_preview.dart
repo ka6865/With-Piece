@@ -12,7 +12,7 @@ import 'scan_providers.dart';
 import 'scan_store.dart';
 
 // 혼자일 때 내 사진첩으로 칠한 지도를 흐리게 보여 초대를 유도한다(설계 5.6).
-// 기기 안의 스캔 결과만 쓰고 서버를 부르지 않는다
+// 미리보기에는 기기 안의 스캔 결과만 쓴다
 class SoloPreview extends ConsumerWidget {
   const SoloPreview({super.key});
 

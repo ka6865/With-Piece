@@ -39,11 +39,27 @@ class ScanStore {
   final Directory directory;
   final String userId;
 
-  static final _blockedUsers = <String>{};
+  static final _blockedUsers = <String, Object>{};
   static final _locks = <String, Future<void>>{};
   static final _legacyCleanup = <String, Future<void>>{};
 
-  static void blockUser(String userId) => _blockedUsers.add(userId);
+  static void blockUser(String userId) => _blockedUsers[userId] = Object();
+
+  static Object? deletionBlockFor(String userId) => _blockedUsers[userId];
+
+  static void applyDeletionStatus(
+    String userId, {
+    required Object? blockAtRequest,
+    required bool pending,
+  }) {
+    // 조회하는 사이 이 기기에서 새 삭제를 요청했다면 최신 차단을 유지한다.
+    if (!identical(blockAtRequest, _blockedUsers[userId])) return;
+    if (pending) {
+      _blockedUsers.putIfAbsent(userId, Object.new);
+    } else {
+      _blockedUsers.remove(userId);
+    }
+  }
 
   static void allowUserAfterDeletionCanceled(String userId) =>
       _blockedUsers.remove(userId);
@@ -63,7 +79,7 @@ class ScanStore {
 
   File get _file => File('${_userDirectory.path}/photo_days.json');
 
-  bool get isDeletionPending => _blockedUsers.contains(userId);
+  bool get isDeletionPending => _blockedUsers.containsKey(userId);
 
   void blockForDeletion() => blockUser(userId);
 

@@ -43,10 +43,7 @@ final scanSnapshotProvider = FutureProvider.family<ScanSnapshot, String>(
     try {
       deletionDate = await ref.watch(myDeletionDateProvider(userId).future);
     } catch (_) {}
-    if (deletionDate != null) {
-      ScanStore.blockUser(userId);
-      return ScanSnapshot.empty;
-    }
+    if (deletionDate != null) return ScanSnapshot.empty;
     final store = await ref.watch(scanStoreProvider(userId).future);
     if (store.isDeletionPending) return ScanSnapshot.empty;
     final scanner = Scanner(

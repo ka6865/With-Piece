@@ -5,7 +5,6 @@ import '../../data/repositories/repository_providers.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../auth/account_state.dart';
 import 'scan_providers.dart';
-import 'scan_store.dart';
 import 'scanner.dart';
 
 Future<Result<void>> rescan(Scanner scanner, void Function() onSuccess) async {
@@ -28,10 +27,7 @@ Future<Result<void>> rescanLibrary(WidgetRef ref) async {
     try {
       deletionDate = await ref.read(myDeletionDateProvider(userId).future);
     } catch (_) {}
-    if (deletionDate != null) {
-      ScanStore.blockUser(userId);
-      return const Err(AppError.validation);
-    }
+    if (deletionDate != null) return const Err(AppError.validation);
     final store = await ref.read(scanStoreProvider(userId).future);
     if (store.isDeletionPending) return const Err(AppError.validation);
     return await rescan(

@@ -91,17 +91,28 @@ final realtimeSyncProvider = Provider<void>((ref) {
     });
   }
 
-  // 연결 대기 중 사용자 채널이 붙지 않으면 상대 수락 알림을 못 받으므로 조회로 대신한다
+  // 구독이 붙어도 합류 신호가 누락될 수 있다. 유효한 초대가 있는 동안 관계만 다시 읽는다.
   Timer? fallback;
-  void onUserChannel(bool joined) {
-    if (joined) {
+  var userChannelJoined = false;
+  void updateFallback() {
+    if (coupleId != null) {
       fallback?.cancel();
       fallback = null;
       return;
     }
-    // 오류가 15초보다 자주 반복돼도 조회가 밀리지 않도록 이미 돌고 있으면 그대로 둔다
     fallback ??= Timer.periodic(const Duration(seconds: 15), (_) {
-      if (coupleId == null) refreshMembership();
+      if (!isCurrent() ||
+          WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
+        return;
+      }
+      final inviteProvider = myInviteProvider(userId);
+      final invite = ref.exists(inviteProvider)
+          ? ref.read(inviteProvider).value
+          : null;
+      if (!userChannelJoined ||
+          (invite?.expiresAt.isAfter(DateTime.now()) ?? false)) {
+        ref.invalidate(currentCoupleProvider);
+      }
     });
   }
 
@@ -112,7 +123,15 @@ final realtimeSyncProvider = Provider<void>((ref) {
         )
         ..onBroadcast(event: 'membership', callback: (_) => refreshMembership())
         ..onBroadcast(event: 'archive', callback: (_) => refreshArchive());
-  subscribe(userChannel, refreshMembership, onStatus: onUserChannel);
+  subscribe(
+    userChannel,
+    refreshMembership,
+    onStatus: (joined) {
+      userChannelJoined = joined;
+      updateFallback();
+    },
+  );
+  updateFallback();
 
   // 재조회 중에는 기존 구독을 유지하고, 확인된 ID가 달라졌을 때만 교체한다.
   ref.listen(currentCoupleProvider, (_, next) {
@@ -120,6 +139,7 @@ final realtimeSyncProvider = Provider<void>((ref) {
     final nextId = next.value?.id;
     if (nextId == coupleId) return;
     coupleId = nextId;
+    updateFallback();
     if (coupleChannel != null) unawaited(client.removeChannel(coupleChannel!));
     if (sharesChannel != null) unawaited(client.removeChannel(sharesChannel!));
     coupleChannel = null;

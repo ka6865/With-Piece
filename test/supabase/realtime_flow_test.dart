@@ -24,8 +24,12 @@ import 'package:woori_piece/features/scan/trip_candidates.dart';
 
 import 'support.dart';
 
-Future<void> _until(FutureOr<bool> Function() ready, String reason) async {
-  final deadline = DateTime.now().add(const Duration(seconds: 10));
+Future<void> _until(
+  FutureOr<bool> Function() ready,
+  String reason, {
+  Duration timeout = const Duration(seconds: 10),
+}) async {
+  final deadline = DateTime.now().add(timeout);
   while (DateTime.now().isBefore(deadline)) {
     if (await ready()) return;
     await Future<void>.delayed(const Duration(milliseconds: 25));
@@ -101,7 +105,10 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final skip = await localStackSkipReason();
 
-  test('연결 대기는 private 사용자 알림으로 갱신하며 같은 커플 조회는 채널을 유지한다', () async {
+  test('초대 대기는 합류 알림을 보완 조회하며 같은 커플 구독을 유지한다', () async {
+    WidgetsBinding.instance.handleAppLifecycleStateChanged(
+      AppLifecycleState.resumed,
+    );
     final a = await signUpLocal();
     final b = await signUpLocal();
     final container = ProviderContainer(
@@ -115,15 +122,26 @@ Future<void> main() async {
     final sync = container.listen(realtimeSyncProvider, (_, _) {});
     addTearDown(sync.close);
     expect(await container.read(currentCoupleProvider.future), isNull);
-    await _joined(a, 'user:${a.auth.currentUser!.id}');
-    // 첫 가입 보정 조회가 끝난 뒤 수락해야 알림 수신을 검증한다
+    final userChannel = await _joined(a, 'user:${a.auth.currentUser!.id}');
+    // 연결된 채널에서 합류 알림만 누락된 경우를 고정한다.
+    userChannel.off('broadcast', {'event': 'membership'});
     await container.pump();
     expect(await container.read(currentCoupleProvider.future), isNull);
-    final id = await _couple(a, b);
+    final inviter = CoupleRepository(a);
+    final joiner = CoupleRepository(b);
+    final invite = (await inviter.createInvite()).valueOrThrow;
+    final userId = a.auth.currentUser!.id;
+    expect(
+      (await container.read(myInviteProvider(userId).future))?.code,
+      invite.code,
+    );
+    expect((await joiner.join(invite.code)).valueOrThrow, JoinOutcome.joined);
+    final id = (await joiner.current()).valueOrThrow!.id;
     await _until(
       () async =>
           (await container.read(currentCoupleProvider.future))?.id == id,
       '상대 합류를 읽지 못했어요',
+      timeout: const Duration(seconds: 20),
     );
     final channel = await _joined(a, 'couple:$id');
     await _joined(a, 'couple-shares:$id');

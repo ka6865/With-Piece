@@ -13,8 +13,17 @@ final myDeletionDateProvider = FutureProvider.family<DateTime?, String>((
   userId,
 ) async {
   if (ref.watch(sessionUserIdProvider) != userId) return null;
-  return (await ref.watch(accountRepositoryProvider).myDeletionDate())
+  final blockAtRequest = ScanStore.deletionBlockFor(userId);
+  final date = (await ref.watch(accountRepositoryProvider).myDeletionDate())
       .valueOrThrow;
+  if (ref.mounted && ref.read(sessionUserIdProvider) == userId) {
+    ScanStore.applyDeletionStatus(
+      userId,
+      blockAtRequest: blockAtRequest,
+      pending: date != null,
+    );
+  }
+  return date;
 });
 
 final partnerDeletionDatesProvider =
