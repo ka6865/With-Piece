@@ -455,20 +455,80 @@ final libraryPickerProvider =
           ),
     );
 
-class LocalThumbnail extends StatelessWidget {
+// 사진첩 썸네일. 다시 그릴 때마다 요청하면 끌어 고르는 동안 요청이 쌓여 칸이 비고,
+// 결과가 올 때마다 새 이미지로 바뀌어 깜빡인다. 칸마다 한 번만 요청하고, 받은 것은
+// 화면 밖으로 나갔다 돌아와도 바로 보이게 기억해 둔다
+class LocalThumbnail extends StatefulWidget {
   const LocalThumbnail({super.key, required this.assetId});
 
   final String assetId;
 
+  // shortcut: 최근 300장(장당 약 10~20KB)만 기억한다. 메모리가 문제되면 줄인다
+  static const cacheSize = 300;
+  static final _cache = <String, Uint8List>{};
+
+  // 테스트가 사진첩 없이 요청 횟수를 셀 수 있게 바꿔 끼운다
+  @visibleForTesting
+  static Future<Uint8List?> Function(String id) loader = (id) =>
+      AssetEntity.fromId(
+        id,
+      ).then((a) => a?.thumbnailDataWithSize(const ThumbnailSize.square(200)));
+
+  @visibleForTesting
+  static void clearCache() => _cache.clear();
+
+  static void _remember(String id, Uint8List bytes) {
+    _cache.remove(id);
+    _cache[id] = bytes;
+    if (_cache.length > cacheSize) _cache.remove(_cache.keys.first);
+  }
+
   @override
-  Widget build(BuildContext context) => FutureBuilder<Uint8List?>(
-    future: AssetEntity.fromId(
-      assetId,
-    ).then((a) => a?.thumbnailDataWithSize(const ThumbnailSize.square(200))),
-    builder: (context, snapshot) => snapshot.data == null
+  State<LocalThumbnail> createState() => _LocalThumbnailState();
+}
+
+class _LocalThumbnailState extends State<LocalThumbnail> {
+  Uint8List? _bytes;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void didUpdateWidget(LocalThumbnail oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.assetId != widget.assetId) _load();
+  }
+
+  Future<void> _load() async {
+    final id = widget.assetId;
+    final cached = LocalThumbnail._cache[id];
+    if (cached != null) {
+      _bytes = cached;
+      return;
+    }
+    _bytes = null;
+    final Uint8List? bytes;
+    try {
+      bytes = await LocalThumbnail.loader(id);
+    } catch (_) {
+      // 지워졌거나 읽을 수 없는 사진은 빈 칸으로 둔다
+      return;
+    }
+    if (bytes == null) return;
+    LocalThumbnail._remember(id, bytes);
+    if (mounted && widget.assetId == id) setState(() => _bytes = bytes);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bytes = _bytes;
+    return bytes == null
         ? ColoredBox(
             color: Theme.of(context).colorScheme.surfaceContainerHighest,
           )
-        : Image.memory(snapshot.data!, fit: BoxFit.cover),
-  );
+        : Image.memory(bytes, fit: BoxFit.cover, gaplessPlayback: true);
+  }
 }
