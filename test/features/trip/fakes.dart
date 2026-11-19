@@ -57,20 +57,28 @@ class FakeTripRepository implements TripRepository {
     return const Ok(null);
   }
 
+  final added = <String>[];
+  final renames = <String>[];
+
   @override
   Future<Result<void>> addRegions(
     String tripId,
     String coupleId,
     Iterable<String> regionIds,
-  ) async => const Ok(null);
+  ) async {
+    added.addAll(regionIds);
+    return const Ok(null);
+  }
 
   @override
   Future<Result<void>> removeRegion(String tripId, String regionId) async =>
       const Ok(null);
 
   @override
-  Future<Result<void>> rename(String tripId, String title) async =>
-      const Ok(null);
+  Future<Result<void>> rename(String tripId, String title) async {
+    renames.add(title);
+    return const Ok(null);
+  }
 
   @override
   Future<Result<void>> setCover(String tripId, String? photoId) async =>

@@ -9,8 +9,10 @@ import '../../core/supabase/supabase_providers.dart';
 import '../../core/uuid.dart';
 import '../../data/repositories/photo_repository.dart';
 import '../../data/repositories/repository_providers.dart';
+import '../../data/repositories/trip_repository.dart';
 import '../scan/scan_providers.dart';
 import '../scan/trip_candidates.dart';
+import 'drag_select_grid.dart';
 import 'photo_selection.dart';
 
 class TripPhotoQuery {
@@ -74,6 +76,27 @@ final tripLocalPhotosProvider =
       (ref, query) => ref.watch(localPhotosInRangeProvider(query.range).future),
     );
 
+// 올린 사진 중 여행에 없는 조각. 속초 여행에 고성에서 찍은 사진을 올렸다면 고성이다
+Set<String> regionsOutsideTrip(
+  Iterable<LocalPhoto> uploaded,
+  Set<String> tripRegions,
+) => {
+  for (final p in uploaded)
+    if (p.regionId case final id? when !tripRegions.contains(id)) id,
+};
+
+// 조각을 더한 뒤의 제목. 사용자가 고친 제목이면 건드리지 않는다(null)
+String? retitledTrip(
+  Trip trip,
+  Iterable<String> added,
+  Map<String, String> names,
+) {
+  if (trip.title != candidateTitle(trip.regionIds, trip.range, names)) {
+    return null;
+  }
+  return candidateTitle([...trip.regionIds, ...added], trip.range, names);
+}
+
 // 내 사진첩에서 고른 사진만 올린다. 상대 사진은 상대가 올린다(설계 8.0)
 class PhotoUploadPage extends ConsumerStatefulWidget {
   const PhotoUploadPage({super.key, required this.query});
@@ -103,6 +126,53 @@ class _PhotoUploadPageState extends ConsumerState<PhotoUploadPage> {
     });
   }
 
+  // 여행에 없는 조각에서 찍은 사진을 올렸으면 그 조각도 여행에 넣을지 묻는다
+  // (2026-11-20 사용자 요청: 속초·고성 1박 2일을 함께 묶기)
+  Future<void> _offerRegions(Set<String> extra) async {
+    if (extra.isEmpty) return;
+    Map<String, String> names;
+    try {
+      names = await ref.read(regionNamesProvider.future);
+    } catch (_) {
+      names = const {};
+    }
+    if (!mounted) return;
+    final label = extra.map((id) => names[id] ?? id).join(', ');
+    final add = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        content: Text('$label에서 찍은 사진도 있어요. 이 여행에 $label도 넣을까요?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('그대로 두기'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('넣기'),
+          ),
+        ],
+      ),
+    );
+    if (add != true) return;
+    final repo = ref.read(tripRepositoryProvider);
+    final query = widget.query;
+    final result = await repo.addRegions(query.tripId, query.coupleId, extra);
+    final trip = ref
+        .read(tripsProvider)
+        .value
+        ?.where((t) => t.id == query.tripId)
+        .firstOrNull;
+    final title = trip == null ? null : retitledTrip(trip, extra, names);
+    if (result is Ok && title != null) await repo.rename(query.tripId, title);
+    ref.invalidate(tripsProvider);
+    if (result is Err && mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('조각을 넣지 못했어요')));
+    }
+  }
+
   Future<void> _upload(List<LocalPhoto> photos) async {
     final chosen = [
       for (final p in photos)
@@ -111,8 +181,8 @@ class _PhotoUploadPageState extends ConsumerState<PhotoUploadPage> {
     final repo = ref.read(photoRepositoryProvider);
     final readOriginal = ref.read(originalBytesProvider);
     final failed = <LocalPhoto>[];
-    setState(() => _done = 0);
-    for (final photo in chosen) {
+    final done = <LocalPhoto>[];
+    Future<void> uploadOne(LocalPhoto photo) async {
       try {
         final original = await readOriginal(photo.assetId);
         final result = original == null
@@ -125,13 +195,28 @@ class _PhotoUploadPageState extends ConsumerState<PhotoUploadPage> {
                 takenAt: photo.takenAt,
                 original: original,
               );
-        if (result is Err) failed.add(photo);
+        (result is Err ? failed : done).add(photo);
       } catch (_) {
         failed.add(photo);
       }
-      if (!mounted) return;
-      setState(() => _done = _done! + 1);
     }
+
+    setState(() => _done = 0);
+    // 원본 읽기(iCloud 다운로드 포함)·변환·업로드를 사진마다 기다리지 않도록 몇 장씩
+    // 동시에 처리한다. 원본이 장당 수 MB라 메모리를 생각해 3장으로 둔다
+    var next = 0;
+    Future<void> worker() async {
+      while (next < chosen.length) {
+        final photo = chosen[next++];
+        await uploadOne(photo);
+        if (!mounted) return;
+        setState(() => _done = _done! + 1);
+      }
+    }
+
+    await Future.wait([for (var i = 0; i < 3; i++) worker()]);
+    if (!mounted) return;
+    await _offerRegions(regionsOutsideTrip(done, widget.query.regionIds));
     if (!mounted) return;
     setState(() {
       _hasFailures = failed.isNotEmpty;
@@ -154,10 +239,8 @@ class _PhotoUploadPageState extends ConsumerState<PhotoUploadPage> {
   Widget build(BuildContext context) {
     final photos = ref.watch(tripLocalPhotosProvider(widget.query));
     final inRange = photos.value;
-    if (inRange != null) {
-      // 여행에 포함된 조각의 사진만 기본 선택한다(설계 8.0)
-      _selected ??= defaultSelection(inRange, regions: widget.query.regionIds);
-    }
+    // 미리 골라 두지 않는다. 사용자가 직접 고른다(2026-11-20 사용자 결정, 설계 8.0)
+    if (inRange != null) _selected ??= {};
     final list = inRange == null
         ? null
         : [
@@ -189,25 +272,22 @@ class _PhotoUploadPageState extends ConsumerState<PhotoUploadPage> {
                 onPressed: uploading ? null : _pickMore,
               ),
               Expanded(
-                child: GridView.count(
-                  crossAxisCount: 4,
-                  padding: const EdgeInsets.all(2),
-                  mainAxisSpacing: 2,
-                  crossAxisSpacing: 2,
-                  children: [
-                    for (final p in list!)
-                      _SelectableThumbnail(
-                        assetId: p.assetId,
-                        selected: selected.contains(p.assetId),
-                        onTap: uploading
-                            ? null
-                            : () => setState(
-                                () => selected.contains(p.assetId)
-                                    ? _selected!.remove(p.assetId)
-                                    : _selected!.add(p.assetId),
-                              ),
-                      ),
-                  ],
+                child: DragSelectGrid(
+                  ids: [for (final p in list!) p.assetId],
+                  selected: selected,
+                  enabled: !uploading,
+                  onChanged: (next) => setState(() => _selected = next),
+                  itemBuilder: (context, id) => _SelectableThumbnail(
+                    assetId: id,
+                    selected: selected.contains(id),
+                    onTap: uploading
+                        ? null
+                        : () => setState(
+                            () => selected.contains(id)
+                                ? _selected!.remove(id)
+                                : _selected!.add(id),
+                          ),
+                  ),
                 ),
               ),
             ],
@@ -330,23 +410,23 @@ class _LibraryPickerPageState extends ConsumerState<LibraryPickerPage> {
         if (n.metrics.extentAfter < 400) _loadMore();
         return false;
       },
-      child: GridView.count(
-        crossAxisCount: 4,
-        padding: const EdgeInsets.all(2),
-        mainAxisSpacing: 2,
-        crossAxisSpacing: 2,
-        children: [
-          for (final p in _photos)
-            _SelectableThumbnail(
-              assetId: p.assetId,
-              selected: _selected.contains(p.assetId),
-              onTap: () => setState(
-                () => _selected.contains(p.assetId)
-                    ? _selected.remove(p.assetId)
-                    : _selected.add(p.assetId),
-              ),
-            ),
-        ],
+      child: DragSelectGrid(
+        ids: [for (final p in _photos) p.assetId],
+        selected: _selected,
+        onChanged: (next) => setState(
+          () => _selected
+            ..clear()
+            ..addAll(next),
+        ),
+        itemBuilder: (context, id) => _SelectableThumbnail(
+          assetId: id,
+          selected: _selected.contains(id),
+          onTap: () => setState(
+            () => _selected.contains(id)
+                ? _selected.remove(id)
+                : _selected.add(id),
+          ),
+        ),
       ),
     ),
     bottomNavigationBar: SafeArea(

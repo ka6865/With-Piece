@@ -80,20 +80,27 @@ class PhotoRepository {
     var insertAttempted = false;
     var knownInsertRejection = false;
     try {
-      for (final MapEntry(key: size, value: path) in paths.entries) {
-        try {
-          await storage.uploadBinary(
-            path,
-            encoded[size]!,
-            fileOptions: FileOptions(
-              contentType: ext == 'heic' ? 'image/heic' : 'image/jpeg',
-            ),
-          );
-          uploaded.add(path);
-        } on StorageException catch (error) {
-          if (error.statusCode != '409' || error.error != 'Duplicate') rethrow;
-        }
-      }
+      // 상세와 썸네일을 함께 올린다. 둘 다 끝날 때까지 기다려 올라간 것을 빠짐없이
+      // 기록한 뒤 첫 오류를 던진다(정리 경로가 uploaded를 쓴다)
+      await Future.wait([
+        for (final MapEntry(key: size, value: path) in paths.entries)
+          () async {
+            try {
+              await storage.uploadBinary(
+                path,
+                encoded[size]!,
+                fileOptions: FileOptions(
+                  contentType: ext == 'heic' ? 'image/heic' : 'image/jpeg',
+                ),
+              );
+              uploaded.add(path);
+            } on StorageException catch (error) {
+              if (error.statusCode != '409' || error.error != 'Duplicate') {
+                rethrow;
+              }
+            }
+          }(),
+      ]);
       final info = await _encoder.inspect(encoded['full']!);
       insertAttempted = true;
       try {

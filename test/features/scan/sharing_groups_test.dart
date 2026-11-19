@@ -50,4 +50,22 @@ void main() {
     );
     expect(suggestHomeRegion({}), isNull);
   });
+
+  test('같은 기간에 붙어 다닌 다른 조각을 함께 묶는다', () {
+    final groups = groupSharingDays({
+      d('sokcho', 10, 3): 30,
+      d('goseong', 10, 4): 10,
+      // 매일 찍히는 곳(10일 이상)은 다른 여행을 끌어오지 않게 묶지 않는다
+      for (var day = 1; day <= 12; day++) d('suwon', 10, day): 1,
+      d('jeju', 5, 1): 5,
+    }, homeRegionId: 'osan');
+    final sokcho = groups.singleWhere((g) => g.regionId == 'sokcho');
+    final visit = sokcho.visits.single;
+    expect(visit.linkedRegionIds, ['goseong']);
+    expect(visit.allDays.toSet(), {d('sokcho', 10, 3), d('goseong', 10, 4)});
+    final goseong = groups.singleWhere((g) => g.regionId == 'goseong');
+    expect(goseong.visits.single.linkedRegionIds, ['sokcho']);
+    final jeju = groups.singleWhere((g) => g.regionId == 'jeju');
+    expect(jeju.visits.single.linkedRegionIds, isEmpty);
+  });
 }
