@@ -15,6 +15,7 @@ import 'package:woori_piece/data/repositories/trip_repository.dart';
 import 'package:woori_piece/features/album/album_providers.dart';
 import 'package:woori_piece/features/auth/auth_state.dart';
 import 'package:woori_piece/features/home/couple_days.dart';
+import 'package:woori_piece/features/home/home_page.dart';
 import 'package:woori_piece/features/home/rewind_page.dart';
 import 'package:woori_piece/features/map/view/mini_puzzle_map.dart';
 import 'package:woori_piece/features/scan/realtime_sync.dart';
@@ -59,10 +60,12 @@ Future<void> pumpApp(
   List<Trip> trips = const [],
   List<TripCandidate> candidates = const [],
   bool rewindSeen = true,
+  List<String>? seenPieces,
   bool settle = true,
 }) async {
   SharedPreferences.setMockInitialValues({
     if (rewindSeen) RewindGate.seenKey('me', 'c1'): true,
+    HomePage.seenPiecesKey('me', 'c1'): ?seenPieces,
   });
   final prefs = await SharedPreferences.getInstance();
   await tester.pumpWidget(
@@ -84,7 +87,7 @@ Future<void> pumpApp(
           ),
         ),
         sessionUserIdProvider.overrideWithValue('me'),
-        tripsProvider.overrideWith((ref) async => trips),
+        tripsProvider.overrideWith((ref) async => [...trips]),
         homeRegionIdsProvider.overrideWith((ref) async => {'11010'}),
         tripCandidatesProvider.overrideWith((ref) async => candidates),
         couplePhotosProvider(
@@ -235,5 +238,79 @@ void main() {
     await pumpApp(tester);
     await tester.pump(const Duration(milliseconds: 500));
     expect(find.byType(RewindPage), findsNothing);
+  });
+
+  testWidgets('마지막으로 본 뒤 새로 채운 조각만 홈 지도에서 맞춰 넣는다', (tester) async {
+    await pumpApp(
+      tester,
+      trips: [
+        trip('t1', '경주시', 1, ['37020']),
+      ],
+      seenPieces: ['11010'],
+    );
+    final mini = tester.widget<MiniPuzzleMap>(find.byType(MiniPuzzleMap));
+    expect(mini.snapRegionIds, {'37020'});
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getStringList(HomePage.seenPiecesKey('me', 'c1'))?.toSet(), {
+      '11010',
+      '37020',
+    });
+  });
+
+  testWidgets('처음 보는 기기는 맞춤 연출 없이 지금 조각을 기준으로 남긴다', (tester) async {
+    await pumpApp(
+      tester,
+      trips: [
+        trip('t1', '경주시', 1, ['37020']),
+      ],
+    );
+    final mini = tester.widget<MiniPuzzleMap>(find.byType(MiniPuzzleMap));
+    expect(mini.snapRegionIds, isEmpty);
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getStringList(HomePage.seenPiecesKey('me', 'c1'))?.toSet(), {
+      '11010',
+      '37020',
+    });
+  });
+
+  testWidgets('홈이 가려진 동안 상대가 채운 조각은 홈으로 돌아올 때 맞춰 넣는다', (tester) async {
+    final trips = <Trip>[];
+    await pumpApp(tester, trips: trips, seenPieces: ['11010']);
+    await tester.tap(find.text('지도'));
+    await tester.pumpAndSettle();
+    // Realtime 반영을 흉내 낸다
+    trips.add(trip('t1', '경주시', 1, ['37020']));
+    ProviderScope.containerOf(
+      tester.element(find.byType(NavigationBar)),
+    ).invalidate(tripsProvider);
+    await tester.pumpAndSettle();
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getStringList(HomePage.seenPiecesKey('me', 'c1'))?.toSet(), {
+      '11010',
+    });
+    await tester.tap(find.text('홈'));
+    await tester.pumpAndSettle();
+    final mini = tester.widget<MiniPuzzleMap>(find.byType(MiniPuzzleMap));
+    expect(mini.snapRegionIds, {'37020'});
+  });
+
+  testWidgets('동작 줄이기를 켜면 조각 맞춤 없이 기준만 갱신한다', (tester) async {
+    tester.platformDispatcher.accessibilityFeaturesTestValue =
+        const FakeAccessibilityFeatures(disableAnimations: true);
+    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+    await pumpApp(
+      tester,
+      trips: [
+        trip('t1', '경주시', 1, ['37020']),
+      ],
+      seenPieces: ['11010'],
+    );
+    final mini = tester.widget<MiniPuzzleMap>(find.byType(MiniPuzzleMap));
+    expect(mini.snapRegionIds, isEmpty);
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getStringList(HomePage.seenPiecesKey('me', 'c1'))?.toSet(), {
+      '11010',
+      '37020',
+    });
   });
 }

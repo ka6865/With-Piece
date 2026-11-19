@@ -9,6 +9,7 @@ import '../../core/supabase/supabase_providers.dart';
 import '../../map_data/map_asset_loader.dart';
 import '../auth/auth_state.dart';
 import 'home_regions.dart';
+import 'progress.dart';
 import 'photo_days.dart';
 import 'scan_store.dart';
 import 'scan_sync.dart';
@@ -110,6 +111,14 @@ final homeRegionIdsProvider = FutureProvider<Set<String>>((ref) async {
   final overrides = ref.watch(overridesProvider.future);
   return homeRegions(await days, await overrides);
 });
+
+// 여행 확인 직전 채운 조각. 아직 읽지 못했으면 null이고 확인 문구가 조각 수를
+// 말하지 않는다(커플 디자인 4.7)
+Set<String>? filledRegionIdsNow(WidgetRef ref) {
+  final trips = ref.read(tripsProvider).value;
+  final home = ref.read(homeRegionIdsProvider).value;
+  return trips == null || home == null ? null : filledRegionIds(trips, home);
+}
 
 // family가 바뀌면 이전 계정·커플의 AsyncValue를 이어받지 않는다.
 final scopedTripsProvider = FutureProvider.autoDispose

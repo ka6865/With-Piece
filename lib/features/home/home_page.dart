@@ -1,9 +1,11 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/repositories/couple_repository.dart';
 import '../../data/repositories/photo_repository.dart';
+import '../../data/repositories/repository_providers.dart';
 import '../../data/repositories/trip_repository.dart';
 import '../../map_data/map_asset_loader.dart';
 import '../album/album_providers.dart';
@@ -21,6 +23,10 @@ import 'rewind_page.dart';
 // (커플 디자인 4.2)
 class HomePage extends ConsumerWidget {
   const HomePage({super.key});
+
+  // 마지막으로 홈에서 본 채운 조각. 새 조각 맞춤 연출의 기준이다(커플 디자인 4.7)
+  static String seenPiecesKey(String userId, String coupleId) =>
+      'pieces_seen:$userId:$coupleId';
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -59,7 +65,14 @@ class HomePage extends ConsumerWidget {
                   child: TripDiscoveryBanner(),
                 ),
               ),
-            _PiecesCard(trips: trips ?? const [], home: home ?? const {}),
+            _PiecesCard(
+              scope: scope,
+              // 둘 다 읽기 전에는 기준과 비교하지 않는다
+              filled: trips == null || home == null
+                  ? null
+                  : filledRegionIds(trips, home),
+              home: home ?? const {},
+            ),
             _RecentTripCard(
               trips: trips,
               photos: photos ?? const [],
@@ -145,17 +158,63 @@ class _Avatar extends StatelessWidget {
   }
 }
 
-class _PiecesCard extends ConsumerWidget {
-  const _PiecesCard({required this.trips, required this.home});
+class _PiecesCard extends ConsumerStatefulWidget {
+  const _PiecesCard({
+    required this.scope,
+    required this.filled,
+    required this.home,
+  });
 
-  final List<Trip> trips;
+  final CoupleScope? scope;
+  final Set<String>? filled;
   final Set<String> home;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_PiecesCard> createState() => _PiecesCardState();
+}
+
+class _PiecesCardState extends ConsumerState<_PiecesCard> {
+  Set<String> _snap = const {};
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _compareWithSeen();
+  }
+
+  @override
+  void didUpdateWidget(_PiecesCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _compareWithSeen();
+  }
+
+  // 홈이 보일 때만 비교한다. 다른 탭이나 위에 쌓인 화면에 가려진 동안(TickerMode
+  // 꺼짐) 기준을 갱신하면 돌아왔을 때 볼 연출이 사라진다
+  void _compareWithSeen() {
+    final scope = widget.scope;
+    final filled = widget.filled;
+    if (!TickerMode.valuesOf(context).enabled ||
+        scope == null ||
+        filled == null) {
+      return;
+    }
+    final prefs = ref.read(sharedPreferencesProvider);
+    final key = HomePage.seenPiecesKey(scope.userId, scope.coupleId);
+    final seen = prefs.getStringList(key)?.toSet();
+    final added = newlyFilled(seen, filled);
+    if (seen == null || !setEquals(seen, filled)) {
+      prefs.setStringList(key, filled.toList());
+    }
+    if (added.isNotEmpty && !MediaQuery.disableAnimationsOf(context)) {
+      _snap = added;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final regions = ref.watch(regionMapAssetProvider).value;
-    final filled = filledRegionIds(trips, home);
+    final filled = widget.filled ?? const <String>{};
     final total = regions?.features.length;
     return _HomeCard(
       onTap: () => context.go('/map'),
@@ -184,7 +243,8 @@ class _PiecesCard extends ConsumerWidget {
                 : MiniPuzzleMap(
                     asset: regions,
                     visitedRegionIds: filled,
-                    homeRegionIds: home,
+                    homeRegionIds: widget.home,
+                    snapRegionIds: _snap,
                   ),
           ),
           if (total != null) ...[

@@ -5,6 +5,7 @@ import '../../core/result/result.dart';
 import '../../data/repositories/repository_providers.dart';
 import '../../data/repositories/trip_repository.dart';
 import '../auth/auth_state.dart';
+import '../scan/progress.dart';
 import '../scan/scan_providers.dart';
 import '../scan/trip_candidates.dart';
 import 'photo_upload_page.dart';
@@ -34,6 +35,7 @@ class _ManualTripPageState extends ConsumerState<ManualTripPage> {
 
   Future<void> _save(Map<String, String> names) async {
     setState(() => _saving = true);
+    final filledBefore = filledRegionIdsNow(ref);
     final result = await ref
         .read(tripRepositoryProvider)
         .confirm(
@@ -46,6 +48,9 @@ class _ManualTripPageState extends ConsumerState<ManualTripPage> {
     setState(() => _saving = false);
     switch (result) {
       case Ok(value: final tripId):
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(confirmedTripMessage(filledBefore, _regions))),
+        );
         ref.invalidate(tripsProvider);
         final coupleId = ref.read(currentCoupleProvider).value?.id;
         final navigator = Navigator.of(context);

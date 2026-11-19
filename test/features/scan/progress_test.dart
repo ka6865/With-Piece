@@ -33,4 +33,21 @@ void main() {
       {'32': 2, '11': 1},
     );
   });
+
+  test('새 조각은 마지막으로 본 집합에 없던 채운 조각이다', () {
+    expect(newlyFilled({'a', 'b'}, {'a', 'b', 'c'}), {'c'});
+    // 사라진 조각은 연출 대상이 아니다
+    expect(newlyFilled({'a', 'b'}, {'a'}), isEmpty);
+    // 첫 설치·새 기기는 기준이 없어 연출하지 않는다
+    expect(newlyFilled(null, {'a'}), isEmpty);
+  });
+
+  test('여행 확인 문구는 새로 채운 조각 수를 말한다', () {
+    expect(
+      confirmedTripMessage({'a'}, ['a', 'b', 'c', 'b']),
+      '우리의 조각이 2개 늘었어요',
+    );
+    expect(confirmedTripMessage({'a', 'b'}, ['a', 'b']), '여행을 담았어요');
+    expect(confirmedTripMessage(null, ['a']), '여행을 담았어요');
+  });
 }
