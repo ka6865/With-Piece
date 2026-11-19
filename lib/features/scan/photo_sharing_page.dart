@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/result/result.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../data/repositories/photo_sharing_repository.dart';
+import '../../data/repositories/repository_providers.dart';
 import '../auth/auth_state.dart';
+import '../refresh/refresh_providers.dart';
 import 'photo_days.dart';
 import 'scan_providers.dart';
+import 'trip_candidates.dart';
 
 class PhotoSharingChoices {
   const PhotoSharingChoices({
@@ -74,6 +78,10 @@ final savePhotoSharingProvider =
         if (result is Ok) {
           ref.invalidate(photoSharingChoicesProvider);
           ref.invalidate(matchedDaysProvider);
+          // 저장이 곧 최신화다. 실패해도 저장은 끝났으므로 결과를 바꾸지 않고
+          // 다음 저장 때 다시 남긴다
+          await ref.read(refreshRepositoryProvider).markRefreshed();
+          ref.invalidate(refreshStatesProvider);
         }
         return result;
       },
@@ -187,6 +195,13 @@ class _PhotoSharingPageState extends ConsumerState<PhotoSharingPage> {
                             _saving = true;
                             _error = null;
                           });
+                          // 결과 문구용. 후보를 읽지 못해도 저장은 막지 않는다
+                          List<TripCandidate>? before;
+                          try {
+                            before = ref.read(tripCandidatesProvider).value;
+                          } catch (_) {
+                            before = null;
+                          }
                           final result = await ref.read(
                             savePhotoSharingProvider,
                           )(data, Map.of(_changes));
@@ -208,8 +223,28 @@ class _PhotoSharingPageState extends ConsumerState<PhotoSharingPage> {
                           setState(() {
                             _changes.clear();
                           });
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('비교할 기록을 저장했어요')),
+                          final messenger = ScaffoldMessenger.of(context);
+                          final router = GoRouter.maybeOf(context);
+                          int? found;
+                          try {
+                            found = newCandidateCount(
+                              before,
+                              await ref.read(tripCandidatesProvider.future),
+                            );
+                          } catch (_) {
+                            found = null;
+                          }
+                          messenger.showSnackBar(
+                            SnackBar(
+                              content: Text(sharingSavedMessage(found)),
+                              action: router != null && (found ?? 0) > 0
+                                  ? SnackBarAction(
+                                      label: '보기',
+                                      onPressed: () =>
+                                          router.push('/trips/candidates'),
+                                    )
+                                  : null,
+                            ),
                           );
                         },
                   child: Text(_saving ? '저장 중' : '비교 범위 저장'),

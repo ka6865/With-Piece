@@ -9,6 +9,7 @@ import '../../data/repositories/repository_providers.dart';
 import '../album/album_providers.dart';
 import '../album/comments.dart';
 import '../auth/auth_state.dart';
+import '../refresh/refresh_providers.dart';
 import 'photo_sharing_page.dart';
 import 'scan_providers.dart';
 
@@ -52,6 +53,7 @@ final realtimeSyncProvider = Provider<void>((ref) {
     refreshComments();
     ref
       ..invalidate(overridesProvider)
+      ..invalidate(refreshStatesProvider)
       ..invalidate(currentCoupleProvider)
       ..invalidate(archivedCouplesProvider);
   }
@@ -136,6 +138,7 @@ final realtimeSyncProvider = Provider<void>((ref) {
     on('overrides', () => ref.invalidate(overridesProvider));
     on('photos', refreshPhotos);
     on('comments', refreshComments);
+    on('refresh', () => ref.invalidate(refreshStatesProvider));
     on('couple', () {
       ref
         ..invalidate(currentCoupleProvider)
