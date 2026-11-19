@@ -206,7 +206,7 @@ class _PhotoSharingPageState extends ConsumerState<PhotoSharingPage> {
                   ].join(' · '),
                 ),
                 subtitle: _Subtitle(
-                  text: '${all.length}일 · 사진 $photos장',
+                  text: '${visit.dateCount}일 · 사진 $photos장',
                   samples: (
                     range: DateRange(first, last),
                     regionIds: regions.toSet(),

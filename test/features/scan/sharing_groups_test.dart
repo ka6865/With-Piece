@@ -68,4 +68,21 @@ void main() {
     final jeju = groups.singleWhere((g) => g.regionId == 'jeju');
     expect(jeju.visits.single.linkedRegionIds, isEmpty);
   });
+
+  test('한 여행 안에서 끊겨 찍힌 조각도 다녀온 번 하나로 합친다', () {
+    final groups = groupSharingDays({
+      d('jeju', 4, 2): 10,
+      d('jeju', 4, 3): 10,
+      d('seogwipo', 4, 4): 10,
+      d('jeju', 4, 5): 10,
+      d('jeju', 4, 6): 10,
+    });
+    final jeju = groups.singleWhere((g) => g.regionId == 'jeju');
+    final visit = jeju.visits.single;
+    expect(visit.days.length, 4);
+    expect(visit.linkedRegionIds, ['seogwipo']);
+    // 날짜 수는 (날짜, 조각) 쌍이 아니라 서로 다른 날짜로 센다
+    expect(visit.dateCount, 5);
+    expect(visit.photoCount, 40);
+  });
 }

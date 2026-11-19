@@ -18,6 +18,9 @@ class SharingVisit {
 
   Iterable<PhotoDay> get allDays => [...days, ...linkedDays];
 
+  // 서로 다른 날짜 수. 같은 날 두 조각에 있었어도 하루다
+  int get dateCount => {for (final d in allDays) d.day}.length;
+
   DateTime get start => days.first.day;
   DateTime get end => days.last.day;
 }
@@ -51,6 +54,13 @@ List<SharingRegionGroup> groupSharingDays(
     final visits = <List<PhotoDay>>[];
     for (final day in list) {
       final last = visits.lastOrNull?.last;
+      // 같은 여행에 속하면 중간에 다른 조각만 찍힌 날이 있어도 한 번이다
+      if (last != null &&
+          trips[last] != null &&
+          identical(trips[last], trips[day])) {
+        visits.last.add(day);
+        continue;
+      }
       // 서머타임 없는 날짜 차이로 이어짐을 본다
       if (last != null &&
           DateTime.utc(day.day.year, day.day.month, day.day.day)
