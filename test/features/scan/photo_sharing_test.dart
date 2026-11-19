@@ -494,6 +494,40 @@ void main() {
     await tester.pumpAndSettle();
     expect(saved, {jeju(5, 1): true, jeju(5, 2): true, jeju(8, 10): true});
   });
+
+  testWidgets('같은 여행으로 붙어 다닌 조각은 한 줄로 함께 고른다', (tester) async {
+    final sokcho = PhotoDay(DateTime(2025, 10, 3), 'sokcho');
+    final goseong = PhotoDay(DateTime(2025, 10, 4), 'goseong');
+    Map<PhotoDay, bool>? saved;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sessionUserIdProvider.overrideWithValue('me'),
+          photoSharingChoicesProvider.overrideWith(
+            (ref) async => PhotoSharingChoices(
+              coupleId: 'c1',
+              days: {sokcho: 30, goseong: 10},
+              approved: {},
+              names: {'sokcho': '속초시', 'goseong': '고성군'},
+            ),
+          ),
+          savePhotoSharingProvider.overrideWithValue((choices, days) async {
+            saved = days;
+            return const Ok(null);
+          }),
+        ],
+        child: const MaterialApp(home: PhotoSharingPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('펼치기').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('2025.10.3~2025.10.4 · 고성군·속초시').first);
+    await tester.pump();
+    await tester.tap(find.text('비교 범위 저장'));
+    await tester.pumpAndSettle();
+    expect(saved, {sokcho: true, goseong: true});
+  });
 }
 
 class _RefreshRepo implements RefreshRepository {

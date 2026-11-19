@@ -42,11 +42,15 @@ class PhotoGrid extends ConsumerWidget {
         mainAxisSpacing: 4,
         crossAxisSpacing: 4,
         children: [
-          for (final photo in photos)
+          for (final (index, photo) in photos.indexed)
             GestureDetector(
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute<void>(
-                  builder: (_) => _FullPhotoPage(photo: photo, userId: userId),
+                  builder: (_) => FullPhotoPage(
+                    photos: photos,
+                    initialIndex: index,
+                    userId: userId,
+                  ),
                 ),
               ),
               onLongPress: onLongPress == null
@@ -87,63 +91,78 @@ class RemoteImage extends StatelessWidget {
   }
 }
 
-class _FullPhotoPage extends ConsumerWidget {
-  const _FullPhotoPage({required this.photo, required this.userId});
+// 사진을 옆으로 넘겨 보고, 그 사진의 댓글을 바로 아래에 늘 보인다
+class FullPhotoPage extends ConsumerStatefulWidget {
+  const FullPhotoPage({
+    super.key,
+    required this.photos,
+    required this.initialIndex,
+    required this.userId,
+  });
 
-  final PhotoRecord photo;
+  final List<PhotoRecord> photos;
+  final int initialIndex;
   final String userId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    if (ref.watch(sessionUserIdProvider) != userId) {
-      return const Scaffold(
-        backgroundColor: Colors.black,
-        body: Center(child: Text('계정이 바뀌어 사진을 닫았어요')),
-      );
+  ConsumerState<FullPhotoPage> createState() => _FullPhotoPageState();
+}
+
+class _FullPhotoPageState extends ConsumerState<FullPhotoPage> {
+  late final _pages = PageController(initialPage: widget.initialIndex);
+  late var _index = widget.initialIndex;
+
+  @override
+  void dispose() {
+    _pages.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (ref.watch(sessionUserIdProvider) != widget.userId) {
+      return const Scaffold(body: Center(child: Text('계정이 바뀌어 사진을 닫았어요')));
     }
+    final total = widget.photos.length;
     return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.black,
-        foregroundColor: Colors.white,
-        actions: [
-          IconButton(
-            tooltip: '댓글',
-            icon: const Icon(Icons.chat_bubble_outline),
-            onPressed: () => showModalBottomSheet<void>(
-              context: context,
-              isScrollControlled: true,
-              showDragHandle: true,
-              builder: (context) => Padding(
-                padding: EdgeInsets.fromLTRB(
-                  16,
-                  0,
-                  16,
-                  16 + MediaQuery.viewInsetsOf(context).bottom,
-                ),
-                child: SingleChildScrollView(
-                  child: CommentSection(
-                    kind: CommentKind.photo,
-                    targetId: photo.id,
-                    coupleId: photo.coupleId,
+      appBar: AppBar(title: Text('${_index + 1} / $total')),
+      body: PageView.builder(
+        controller: _pages,
+        itemCount: total,
+        onPageChanged: (index) => setState(() => _index = index),
+        itemBuilder: (context, index) {
+          final photo = widget.photos[index];
+          return ListView(
+            children: [
+              ColoredBox(
+                color: Colors.black,
+                child: SizedBox(
+                  height: MediaQuery.sizeOf(context).height * 0.55,
+                  child: FutureBuilder<Map<String, String>>(
+                    key: ValueKey((widget.userId, photo.id)),
+                    future: ref.watch(signedUrlCacheProvider).urls([
+                      photo.fullPath,
+                    ]),
+                    builder: (context, snapshot) => InteractiveViewer(
+                      child: RemoteImage(
+                        url: snapshot.data?[photo.fullPath],
+                        fit: BoxFit.contain,
+                      ),
+                    ),
                   ),
                 ),
               ),
-            ),
-          ),
-        ],
-      ),
-      body: Center(
-        child: FutureBuilder<Map<String, String>>(
-          key: ValueKey(userId),
-          future: ref.watch(signedUrlCacheProvider).urls([photo.fullPath]),
-          builder: (context, snapshot) => InteractiveViewer(
-            child: RemoteImage(
-              url: snapshot.data?[photo.fullPath],
-              fit: BoxFit.contain,
-            ),
-          ),
-        ),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: CommentSection(
+                  kind: CommentKind.photo,
+                  targetId: photo.id,
+                  coupleId: photo.coupleId,
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

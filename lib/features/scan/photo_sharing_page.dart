@@ -10,6 +10,8 @@ import '../auth/auth_state.dart';
 import '../refresh/refresh_providers.dart';
 import 'photo_days.dart';
 import 'scan_providers.dart';
+import '../trip/photo_selection.dart';
+import '../trip/photo_upload_page.dart';
 import 'sharing_groups.dart';
 import 'trip_candidates.dart';
 
@@ -165,34 +167,68 @@ class _PhotoSharingPageState extends ConsumerState<PhotoSharingPage> {
                 ? '${data.names[group.regionId] ?? group.regionId} · 사는 곳'
                 : data.names[group.regionId] ?? group.regionId,
           ),
-          subtitle: Text(
-            group.isHome
+          subtitle: _Subtitle(
+            text: group.isHome
                 ? '${_count(group.dayCount)}일'
                 : '${group.visits.length}번 · ${group.dayCount}일',
+            // 사는 곳은 매일 찍혀 예시가 고르는 데 도움이 안 된다
+            samples: group.isHome
+                ? null
+                : (
+                    range: DateRange(
+                      group.visits.first.start,
+                      group.visits.first.end,
+                    ),
+                    regionIds: {group.regionId},
+                  ),
           ),
           secondary: _toggle(group.regionId),
         ),
         if (_expanded.contains(group.regionId))
           for (final visit in group.visits) ...[
-            tile(
-              days: visit.days,
-              indent: 24,
-              title: Text(
-                visit.days.length == 1
-                    ? date(visit.start)
-                    : '${date(visit.start)}~${date(visit.end)}',
-              ),
-              subtitle: Text('${visit.days.length}일 · 사진 ${visit.photoCount}장'),
-              secondary: visit.days.length == 1
-                  ? null
-                  : _toggle('${group.regionId}|${visit.start}'),
-            ),
+            () {
+              // 같은 여행으로 붙어 다닌 조각(속초·고성)은 한 줄로 함께 고른다
+              final all = [...visit.allDays]
+                ..sort((a, b) => a.day.compareTo(b.day));
+              final first = all.first.day, last = all.last.day;
+              final regions = [group.regionId, ...visit.linkedRegionIds];
+              final photos = all.fold(0, (sum, d) => sum + data.days[d]!);
+              return tile(
+                days: all,
+                indent: 24,
+                title: Text(
+                  [
+                    first == last
+                        ? date(first)
+                        : '${date(first)}~${date(last)}',
+                    if (visit.linkedRegionIds.isNotEmpty)
+                      regions.map((id) => data.names[id] ?? id).join('·'),
+                  ].join(' · '),
+                ),
+                subtitle: _Subtitle(
+                  text: '${all.length}일 · 사진 $photos장',
+                  samples: (
+                    range: DateRange(first, last),
+                    regionIds: regions.toSet(),
+                  ),
+                ),
+                secondary: all.length == 1
+                    ? null
+                    : _toggle('${group.regionId}|${visit.start}'),
+              );
+            }(),
             if (_expanded.contains('${group.regionId}|${visit.start}'))
-              for (final day in visit.days)
+              for (final day in [
+                ...visit.allDays,
+              ]..sort((a, b) => a.day.compareTo(b.day)))
                 tile(
                   days: [day],
                   indent: 48,
-                  title: Text(date(day.day)),
+                  title: Text(
+                    visit.linkedRegionIds.isEmpty
+                        ? date(day.day)
+                        : '${date(day.day)} · ${data.names[day.regionId] ?? day.regionId}',
+                  ),
                   subtitle: Text('사진 ${data.days[day]}장'),
                 ),
           ],
@@ -343,6 +379,59 @@ class _PhotoSharingPageState extends ConsumerState<PhotoSharingPage> {
                 ),
               ),
             ),
+    );
+  }
+}
+
+// 줄 설명과 그 기간·조각의 내 사진 몇 장. 사진은 기기 안에서만 읽는다(설계 5.1)
+class _Subtitle extends ConsumerWidget {
+  const _Subtitle({required this.text, this.samples});
+
+  static const count = 4;
+  static const side = 40.0;
+
+  final String text;
+  final ({DateRange range, Set<String> regionIds})? samples;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final samples = this.samples;
+    List<LocalPhoto>? photos;
+    try {
+      photos = samples == null
+          ? null
+          : ref
+                .watch(localPhotosInRangeProvider(samples.range))
+                .value
+                ?.where((p) => samples.regionIds.contains(p.regionId))
+                .take(count)
+                .toList();
+    } catch (_) {
+      // 사진 권한이 없거나 읽지 못하면 예시 없이 보인다
+      photos = null;
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(text),
+        if (photos != null && photos.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Row(
+              spacing: 4,
+              children: [
+                for (final p in photos)
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: SizedBox.square(
+                      dimension: side,
+                      child: LocalThumbnail(assetId: p.assetId),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+      ],
     );
   }
 }

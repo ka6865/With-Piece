@@ -2,11 +2,21 @@ import 'photo_days.dart';
 
 // 비교할 기록 목록의 한 번 다녀온 기간. 같은 조각의 연속된 날짜다
 class SharingVisit {
-  const SharingVisit(this.days, this.photoCount);
+  const SharingVisit(
+    this.days,
+    this.photoCount, {
+    this.linkedRegionIds = const [],
+    this.linkedDays = const [],
+  });
 
   // 날짜 오름차순
   final List<PhotoDay> days;
   final int photoCount;
+  // 같은 여행으로 붙어 다닌 다른 조각(속초 1박 2일의 고성). 고르면 함께 고른다
+  final List<String> linkedRegionIds;
+  final List<PhotoDay> linkedDays;
+
+  Iterable<PhotoDay> get allDays => [...days, ...linkedDays];
 
   DateTime get start => days.first.day;
   DateTime get end => days.last.day;
@@ -30,6 +40,7 @@ List<SharingRegionGroup> groupSharingDays(
   Map<PhotoDay, int> days, {
   String? homeRegionId,
 }) {
+  final trips = _tripChains(days.keys, homeRegionId: homeRegionId);
   final byRegion = <String, List<PhotoDay>>{};
   for (final day in days.keys) {
     byRegion.putIfAbsent(day.regionId, () => []).add(day);
@@ -56,7 +67,17 @@ List<SharingRegionGroup> groupSharingDays(
     groups.add(
       SharingRegionGroup(region, [
         for (final v in visits.reversed)
-          SharingVisit(v, v.fold(0, (sum, d) => sum + days[d]!)),
+          () {
+            final linked = [
+              ...?trips[v.first]?.where((d) => d.regionId != region),
+            ];
+            return SharingVisit(
+              v,
+              v.fold(0, (sum, d) => sum + days[d]!),
+              linkedRegionIds: {for (final d in linked) d.regionId}.toList(),
+              linkedDays: linked,
+            );
+          }(),
       ], isHome: region == homeRegionId),
     );
   }
@@ -66,6 +87,42 @@ List<SharingRegionGroup> groupSharingDays(
   });
   return groups;
 }
+
+// 여행 후보 묶기(설계 5.4)처럼 연속된 날짜를 조각과 상관없이 한 여행으로 잇는다.
+// 사는 곳과 서로 다른 날이 10일 이상인 조각(생활권 기준, 설계 5.3)은 매일 찍혀
+// 모든 여행을 하나로 이어 버리므로 빼고 잇는다. 날짜·조각별로 그 여행의 날들을 돌려준다
+Map<PhotoDay, List<PhotoDay>> _tripChains(
+  Iterable<PhotoDay> days, {
+  String? homeRegionId,
+}) {
+  final dayCount = <String, int>{};
+  for (final d in days) {
+    dayCount[d.regionId] = (dayCount[d.regionId] ?? 0) + 1;
+  }
+  final travel = [
+    for (final d in days)
+      if (d.regionId != homeRegionId && dayCount[d.regionId]! < 10) d,
+  ]..sort((a, b) => a.day.compareTo(b.day));
+  final chains = <List<PhotoDay>>[];
+  for (final d in travel) {
+    final last = chains.lastOrNull?.last.day;
+    if (last != null && _daysBetween(last, d.day) <= 1) {
+      chains.last.add(d);
+    } else {
+      chains.add([d]);
+    }
+  }
+  return {
+    for (final chain in chains)
+      for (final d in chain) d: chain,
+  };
+}
+
+int _daysBetween(DateTime a, DateTime b) => DateTime.utc(
+  b.year,
+  b.month,
+  b.day,
+).difference(DateTime.utc(a.year, a.month, a.day)).inDays;
 
 // 서로 다른 날이 가장 많은 조각. 사진 수가 아니라 날 수로 봐야 여행지 하루 몰아
 // 찍은 사진보다 매일 찍히는 동네가 앞선다

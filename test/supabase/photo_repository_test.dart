@@ -216,7 +216,8 @@ Future<void> main() async {
     expect(await upload(), isA<Err<String>>());
     expect(httpClient.lostStorageResponse, isTrue);
     expect(httpClient.lostDatabaseResponse, isFalse);
-    expect(httpClient.objects, hasLength(1));
+    // 상세와 썸네일을 함께 올려, 한쪽 응답을 잃어도 다른 쪽은 이미 올라가 있다
+    expect(httpClient.objects, hasLength(2));
 
     expect(await upload(), isA<Err<String>>());
     expect(httpClient.lostDatabaseResponse, isTrue);
