@@ -7,6 +7,7 @@ import 'package:woori_piece/app/app.dart';
 import 'package:woori_piece/app/router.dart';
 import 'package:woori_piece/features/auth/auth_state.dart';
 import 'package:woori_piece/features/map/painter/puzzle_layout.dart';
+import 'package:woori_piece/features/map/painter/puzzle_painter.dart';
 import 'package:woori_piece/features/map/view/puzzle_map.dart';
 import 'package:woori_piece/map_data/map_asset.dart';
 import 'package:woori_piece/map_data/map_asset_loader.dart';
@@ -83,5 +84,42 @@ void main() {
     await tester.pumpWidget(appAt('/province/99'));
     await tester.pumpAndSettle();
     expect(find.text('지역을 찾을 수 없어요'), findsOneWidget);
+  });
+
+  testWidgets('조각 지도를 주면 채운 조각만 칠하고 시도는 경계만 긋는다', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PuzzleMap(
+          asset: provinces,
+          pieceAsset: regions,
+          visitedRegionIds: const {'32060'},
+          onRegionTap: (_) {},
+        ),
+      ),
+    );
+    final painters = tester
+        .widgetList<CustomPaint>(find.byType(CustomPaint))
+        .map((c) => c.painter)
+        .whereType<PuzzlePainter>()
+        .toList();
+    final pieces = painters.singleWhere((p) => !p.bordersOnly);
+    final borders = painters.singleWhere((p) => p.bordersOnly);
+    // 강원 조각 하나만 칠하고 다른 강원 조각(고성군 32400)은 비워 둔다
+    expect(pieces.layout.polygons.map((p) => p.regionId).toSet().length, 229);
+    expect(pieces.visitedRegionIds, {'32060'});
+    expect(pieces.visitedRegionIds.contains('32400'), isFalse);
+    expect(borders.layout.polygons.map((p) => p.regionId).toSet().length, 17);
+  });
+
+  testWidgets('조각 지도 위에서도 시도를 누르면 시도 화면으로 간다', (tester) async {
+    await tester.pumpWidget(appAt('/map'));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<PuzzleMap>(find.byType(PuzzleMap)).pieceAsset,
+      regions,
+    );
+    await tapProvinceByCode(tester, '32');
+    await tester.pumpAndSettle();
+    expect(find.text('강원도'), findsOneWidget);
   });
 }

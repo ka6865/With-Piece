@@ -78,7 +78,7 @@ class _RewindPageState extends State<RewindPage>
     with SingleTickerProviderStateMixin {
   // 사귄 날이 아무리 멀어도 하루씩 넘기지 않고 같은 길이 안에서 가속해 되감는다
   late final _controller =
-      AnimationController(vsync: this, duration: const Duration(seconds: 3))
+      AnimationController(vsync: this, duration: const Duration(seconds: 7))
         ..addStatusListener((status) {
           if (status == AnimationStatus.completed) _close();
         })

@@ -18,7 +18,8 @@ begin
     return 'already_coupled';
   end if;
   insert into auth.users (id, aud, role, email, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
-    values (partner, 'authenticated', 'authenticated', 'solo-' || me || '@dev.local',
+    -- 연결을 끊고 다시 BGMS를 넣으면 새 상대를 만든다. 이메일이 겹치지 않게 새 id로 짓는다
+    values (partner, 'authenticated', 'authenticated', 'solo-' || partner || '@dev.local',
             '{"dev_solo": true}', '{"name": "테스트 상대"}', now(), now());
   insert into public.couples (user_a_id, user_b_id) values (me, partner) returning id into couple;
   update public.users set active_couple_id = couple where id in (me, partner);
