@@ -51,6 +51,10 @@ final originalBytesProvider = Provider<Future<Uint8List?> Function(String)>(
   (ref) => ref.watch(photoLibraryRepositoryProvider).originalBytes,
 );
 
+final prefetchOriginalProvider = Provider<Future<void> Function(String)>(
+  (ref) => ref.watch(photoLibraryRepositoryProvider).prefetchOriginal,
+);
+
 // 기간 안에 찍힌 내 사진. 조각은 기기 안에서 판정하고 서버로 보내지 않는다(설계 5.1).
 // 후보 카드 미리보기와 사진 고르기 화면이 같이 쓴다
 final localPhotosInRangeProvider =
@@ -97,6 +101,9 @@ String? retitledTrip(
   return candidateTitle([...trip.regionIds, ...added], trip.range, names);
 }
 
+// 동시에 올리는 장수. 원본이 장당 수 MB라 메모리와 맞바꾼다
+const uploadWorkers = 5;
+
 // 내 사진첩에서 고른 사진만 올린다. 상대 사진은 상대가 올린다(설계 8.0)
 class PhotoUploadPage extends ConsumerStatefulWidget {
   const PhotoUploadPage({super.key, required this.query});
@@ -114,6 +121,31 @@ class _PhotoUploadPageState extends ConsumerState<PhotoUploadPage> {
   final _uploadIds = <String, String>{};
   int? _done;
   var _hasFailures = false;
+  // 고르는 순간 iCloud 원본을 미리 받는다. 올리기를 누를 때는 이미 기기에 있다
+  final _prefetchQueue = <String>[];
+  final _prefetched = <String>{};
+  var _prefetching = 0;
+
+  void _prefetch(Iterable<String> ids) {
+    for (final id in ids) {
+      if (_prefetched.add(id)) _prefetchQueue.add(id);
+    }
+    final prefetch = ref.read(prefetchOriginalProvider);
+    // 회선을 업로드와 나눠 쓰므로 2장씩만 받는다
+    while (_prefetching < 2 && _prefetchQueue.isNotEmpty) {
+      final id = _prefetchQueue.removeAt(0);
+      _prefetching++;
+      prefetch(id).catchError((_) {}).whenComplete(() {
+        _prefetching--;
+        if (mounted) _prefetch(const []);
+      });
+    }
+  }
+
+  void _setSelected(Set<String> next) {
+    _prefetch(next.difference(_selected ?? const {}));
+    setState(() => _selected = next);
+  }
 
   Future<void> _pickMore() async {
     final picked = await ref.read(libraryPickerProvider)(context);
@@ -124,6 +156,7 @@ class _PhotoUploadPageState extends ConsumerState<PhotoUploadPage> {
         _selected!.add(p.assetId);
       }
     });
+    _prefetch(picked.map((p) => p.assetId));
   }
 
   // 여행에 없는 조각에서 찍은 사진을 올렸으면 그 조각도 여행에 넣을지 묻는다
@@ -202,8 +235,8 @@ class _PhotoUploadPageState extends ConsumerState<PhotoUploadPage> {
     }
 
     setState(() => _done = 0);
-    // 원본 읽기(iCloud 다운로드 포함)·변환·업로드를 사진마다 기다리지 않도록 몇 장씩
-    // 동시에 처리한다. 원본이 장당 수 MB라 메모리를 생각해 3장으로 둔다
+    // 원본 읽기·변환·업로드를 사진마다 기다리지 않도록 몇 장씩 동시에 처리한다.
+    // 실기기 측정에서 업로드(장당 약 0.6초)가 가장 커서 5장으로 늘렸다(2026-11-20)
     var next = 0;
     Future<void> worker() async {
       while (next < chosen.length) {
@@ -214,7 +247,7 @@ class _PhotoUploadPageState extends ConsumerState<PhotoUploadPage> {
       }
     }
 
-    await Future.wait([for (var i = 0; i < 3; i++) worker()]);
+    await Future.wait([for (var i = 0; i < uploadWorkers; i++) worker()]);
     if (!mounted) return;
     await _offerRegions(regionsOutsideTrip(done, widget.query.regionIds));
     if (!mounted) return;
@@ -276,16 +309,16 @@ class _PhotoUploadPageState extends ConsumerState<PhotoUploadPage> {
                   ids: [for (final p in list!) p.assetId],
                   selected: selected,
                   enabled: !uploading,
-                  onChanged: (next) => setState(() => _selected = next),
+                  onChanged: _setSelected,
                   itemBuilder: (context, id) => _SelectableThumbnail(
                     assetId: id,
                     selected: selected.contains(id),
                     onTap: uploading
                         ? null
-                        : () => setState(
-                            () => selected.contains(id)
-                                ? _selected!.remove(id)
-                                : _selected!.add(id),
+                        : () => _setSelected(
+                            selected.contains(id)
+                                ? selected.difference({id})
+                                : {...selected, id},
                           ),
                   ),
                 ),

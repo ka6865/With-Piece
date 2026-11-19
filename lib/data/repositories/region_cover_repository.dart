@@ -45,15 +45,34 @@ class RegionCoverRepository {
         };
       });
 
-  // 두 사람 누구나 바꾸고 나중 것이 남는다
-  Future<Result<void>> save(String coupleId, RegionCover cover) => guard(
-    () => _client.from('region_covers').upsert({
-      'couple_id': coupleId,
-      'region_id': cover.regionId,
-      'photo_id': cover.photoId,
-      'scale': cover.scale,
-      'center_x': cover.centerX,
-      'center_y': cover.centerY,
-    }),
-  );
+  // 두 사람 누구나 바꾸고 나중 것이 남는다. upsert는 충돌 시 커플·조각 칸까지
+  // 고치려 해 그 칸의 수정 권한이 없어 거부된다. 고칠 행이 없을 때만 넣는다
+  Future<Result<void>> save(String coupleId, RegionCover cover) =>
+      guard(() async {
+        final values = {
+          'photo_id': cover.photoId,
+          'scale': cover.scale,
+          'center_x': cover.centerX,
+          'center_y': cover.centerY,
+        };
+        Future<bool> update() async =>
+            (await _client
+                    .from('region_covers')
+                    .update(values)
+                    .eq('couple_id', coupleId)
+                    .eq('region_id', cover.regionId)
+                    .select('region_id'))
+                .isNotEmpty;
+        if (await update()) return;
+        try {
+          await _client.from('region_covers').insert({
+            'couple_id': coupleId,
+            'region_id': cover.regionId,
+            ...values,
+          });
+        } on PostgrestException catch (error) {
+          // 상대가 같은 조각을 먼저 넣었으면 그 행을 고친다
+          if (error.code != '23505' || !await update()) rethrow;
+        }
+      });
 }
