@@ -102,4 +102,16 @@ void main() {
     expect(find.text('여행 a'), findsOneWidget);
     expect(find.text('생활권에서 찍은 사진'), findsOneWidget);
   });
+
+  testWidgets('그 조각 사진이 없어도 같은 여행 사진이 있으면 대표 사진을 바꿀 수 있다', (tester) async {
+    await pump(
+      tester,
+      // photo()는 여행 t1의 사진이다
+      trips: [
+        trip('t1', 3, ['32060', '32010']),
+      ],
+      photos: [photo('p1', '32010')],
+    );
+    expect(find.text('대표 사진 바꾸기'), findsOneWidget);
+  });
 }
