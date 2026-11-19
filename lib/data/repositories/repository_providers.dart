@@ -9,6 +9,7 @@ import 'couple_repository.dart';
 import 'photo_day_repository.dart';
 import 'photo_library_repository.dart';
 import 'refresh_repository.dart';
+import 'region_cover_repository.dart';
 import 'trip_repository.dart';
 
 // main에서 SharedPreferences.getInstance() 결과로 override한다
@@ -49,4 +50,8 @@ final commentRepositoryProvider = Provider<CommentRepository>(
 
 final refreshRepositoryProvider = Provider<RefreshRepository>(
   (ref) => RefreshRepository(ref.watch(supabaseClientProvider)),
+);
+
+final regionCoverRepositoryProvider = Provider<RegionCoverRepository>(
+  (ref) => RegionCoverRepository(ref.watch(supabaseClientProvider)),
 );

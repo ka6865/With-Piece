@@ -14,6 +14,7 @@ class PuzzleMap extends StatefulWidget {
     this.onRegionLongPress,
     this.showSea = false,
     this.pieceAsset,
+    this.covers = const {},
   });
 
   // 탭 판정과 지역명. pieceAsset이 있으면 이 애셋은 경계만 그린다
@@ -21,6 +22,8 @@ class PuzzleMap extends StatefulWidget {
   // 칠하는 조각 애셋. 전국 지도가 시도 대신 시군구 조각을 칠할 때 쓴다.
   // 이때 visitedRegionIds·homeRegionIds는 조각 코드다
   final MapAsset? pieceAsset;
+  // 조각을 채울 대표 사진(시도 화면). 조각 코드별
+  final Map<String, CoverImage> covers;
   final Set<String> visitedRegionIds;
   final ValueChanged<String> onRegionTap;
   final Set<String> homeRegionIds;
@@ -138,6 +141,7 @@ class _PuzzleMapState extends State<PuzzleMap> {
                     colorScheme: scheme,
                     showSea: widget.showSea && pieceLayout == null,
                     bordersOnly: pieceLayout != null,
+                    covers: widget.covers,
                   ),
                 ),
               ),
@@ -150,6 +154,7 @@ class _PuzzleMapState extends State<PuzzleMap> {
                     regionNames: _regionNames,
                     colorScheme: scheme,
                     zoom: matrix.getMaxScaleOnAxis(),
+                    backdropRegionIds: widget.covers.keys.toSet(),
                   ),
                 ),
               ),

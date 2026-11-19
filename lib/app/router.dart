@@ -13,6 +13,7 @@ import '../features/auth/started_on_page.dart';
 import '../features/home/home_page.dart';
 import '../features/map/view/national_map_page.dart';
 import '../features/map/view/province_map_page.dart';
+import '../features/map/view/region_page.dart';
 import '../features/refresh/refresh_page.dart';
 import '../features/scan/photo_sharing_page.dart';
 import '../features/trip/manual_trip_page.dart';
@@ -107,9 +108,14 @@ final routerProvider = Provider<GoRouter>((ref) {
             TripDetailPage(tripId: state.pathParameters['tripId']!),
       ),
       GoRoute(
-        path: '/regions/:regionId/photos',
+        path: '/regions/:regionId',
         builder: (_, state) =>
-            RegionPhotosPage(regionId: state.pathParameters['regionId']!),
+            RegionPage(regionId: state.pathParameters['regionId']!),
+      ),
+      GoRoute(
+        path: '/regions/:regionId/cover',
+        builder: (_, state) =>
+            CoverPickerPage(regionId: state.pathParameters['regionId']!),
       ),
       GoRoute(
         path: '/settings/photo-sharing',

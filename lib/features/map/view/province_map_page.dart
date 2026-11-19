@@ -7,12 +7,15 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/result/result.dart';
 import '../../../data/repositories/trip_repository.dart';
-import '../../trip/trip_candidates_page.dart';
 import '../../../data/repositories/repository_providers.dart';
 import '../../auth/auth_state.dart';
 import '../../scan/home_regions.dart';
 import '../../scan/progress.dart';
 import '../../scan/scan_providers.dart';
+import '../../../data/repositories/photo_repository.dart';
+import '../../album/album_providers.dart';
+import '../painter/puzzle_painter.dart';
+import '../region_covers.dart';
 import 'puzzle_map.dart';
 
 class ProvinceMapPage extends ConsumerWidget {
@@ -35,6 +38,15 @@ class ProvinceMapPage extends ConsumerWidget {
             : ref.watch(scopedHomeRegionIdsProvider(scope)).value) ??
         const <String>{};
     final travel = filledRegionIds(trips, const {});
+    final photos =
+        (scope == null
+            ? null
+            : ref.watch(scopedCouplePhotosProvider(scope)).value) ??
+        const <PhotoRecord>[];
+    final effective = effectiveCovers(
+      ref.watch(regionCoversProvider).value ?? const {},
+      photos,
+    );
     return switch ((provinces, regions)) {
       (
         AsyncData(value: final provinceAsset),
@@ -51,6 +63,16 @@ class ProvinceMapPage extends ConsumerWidget {
               body: const Center(child: Text('지역을 찾을 수 없어요')),
             );
           }
+          // 채운 조각만 사진으로 채운다. 사진을 받는 동안은 면 색이다
+          final covers = <String, CoverImage>{
+            for (final MapEntry(key: id, value: (photo, cover))
+                in effective.entries)
+              if (asset.byId(id) != null &&
+                  (travel.contains(id) || home.contains(id)))
+                if (ref.watch(coverImageProvider(photo.fullPath)).value
+                    case final image?)
+                  id: (image: image, cover: cover),
+          };
           return Scaffold(
             appBar: AppBar(title: Text(province.name)),
             body: Column(
@@ -62,16 +84,12 @@ class ProvinceMapPage extends ConsumerWidget {
                       asset: asset,
                       visitedRegionIds: travel,
                       homeRegionIds: home,
-                      onRegionTap: (id) => _openRegion(
-                        context,
-                        id,
-                        trips: [
-                          for (final t in trips)
-                            if (t.status == TripStatus.confirmed &&
-                                t.regionIds.contains(id))
-                              t,
-                        ],
-                        home: home.contains(id),
+                      covers: covers,
+                      // 채운 조각은 조각 화면, 빈 조각은 수동 여행 만들기(설계 5.5, 4.3)
+                      onRegionTap: (id) => context.push(
+                        travel.contains(id) || home.contains(id)
+                            ? '/regions/$id'
+                            : '/trips/new?region=$id',
                       ),
                       onRegionLongPress: (id) => _changeKind(
                         context,
@@ -103,45 +121,6 @@ class ProvinceMapPage extends ConsumerWidget {
         body: const Center(child: Text('지도를 불러오는 중이에요')),
       ),
     };
-  }
-}
-
-// 칠해진 조각을 탭하면 그 조각의 여행으로 간다. 여럿이면 고르게 한다(설계 8.4)
-Future<void> _openRegion(
-  BuildContext context,
-  String regionId, {
-  required List<Trip> trips,
-  required bool home,
-}) async {
-  if (trips.length == 1) {
-    await context.push('/trips/${trips.single.id}');
-    return;
-  }
-  if (trips.isEmpty) {
-    // 생활권은 그 조각의 사진, 빈 조각은 수동 여행 만들기(설계 5.5)
-    await context.push(
-      home ? '/regions/$regionId/photos' : '/trips/new?region=$regionId',
-    );
-    return;
-  }
-  final picked = await showModalBottomSheet<Trip>(
-    context: context,
-    builder: (context) => SafeArea(
-      child: ListView(
-        shrinkWrap: true,
-        children: [
-          for (final trip in trips)
-            ListTile(
-              title: Text(trip.title),
-              subtitle: Text(formatRange(trip.range)),
-              onTap: () => Navigator.pop(context, trip),
-            ),
-        ],
-      ),
-    ),
-  );
-  if (picked != null && context.mounted) {
-    await context.push('/trips/${picked.id}');
   }
 }
 
@@ -192,6 +171,22 @@ MapAsset? provinceAssetOf(MapAsset regionAsset, String provinceId) {
   final insets = regionAsset.insets
       .where((i) => featureIds.contains(i.regionId))
       .toList();
+  return _assetOf(regionAsset, features, insets);
+}
+
+// 조각 하나의 모양만 담은 애셋. 구도 맞춤 화면의 틀로 쓴다. 인셋 없이 모든 폴리곤을
+// 한 뷰포트에 넣는다(울릉군처럼 인셋에만 있는 조각도 그려지게)
+MapAsset? regionShapeAssetOf(MapAsset regionAsset, String regionId) {
+  final feature = regionAsset.byId(regionId);
+  if (feature == null) return null;
+  return _assetOf(regionAsset, [feature], const []);
+}
+
+MapAsset _assetOf(
+  MapAsset regionAsset,
+  List<MapFeature> features,
+  List<MapInset> insets,
+) {
   final insetRegionIds = {for (final i in insets) i.regionId};
   final points = [
     for (final f in features)
