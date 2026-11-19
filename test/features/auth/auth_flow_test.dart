@@ -163,6 +163,22 @@ void main() {
     expect(find.byType(NavigationBar), findsOneWidget);
   });
 
+  testWidgets('커플이면 설정에 다시 스캔과 비교할 기록 선택이 없다', (tester) async {
+    await pumpApp(
+      tester,
+      stage: AppStage.ready,
+      location: '/settings',
+      couple: Couple(
+        id: 'couple-1',
+        partnerId: 'partner-1',
+        startedOn: DateTime(2020, 1, 1),
+      ),
+    );
+    expect(find.text('사귄 날 수정'), findsOneWidget);
+    expect(find.text('전체 다시 스캔'), findsNothing);
+    expect(find.text('비교할 기록 선택'), findsNothing);
+  });
+
   testWidgets('모두 갖추면 홈', (tester) async {
     await pumpApp(tester, stage: AppStage.ready, location: '/login');
     expect(find.text('우리의 조각'), findsOneWidget);

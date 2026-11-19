@@ -13,6 +13,7 @@ import '../features/auth/started_on_page.dart';
 import '../features/home/home_page.dart';
 import '../features/map/view/national_map_page.dart';
 import '../features/map/view/province_map_page.dart';
+import '../features/refresh/refresh_page.dart';
 import '../features/scan/photo_sharing_page.dart';
 import '../features/trip/manual_trip_page.dart';
 import '../features/trip/trip_candidates_page.dart';
@@ -45,6 +46,11 @@ final routerProvider = Provider<GoRouter>((ref) {
           StatefulShellBranch(
             routes: [
               GoRoute(path: '/album', builder: (_, _) => const AlbumPage()),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(path: '/refresh', builder: (_, _) => const RefreshPage()),
             ],
           ),
           StatefulShellBranch(

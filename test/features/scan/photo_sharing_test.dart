@@ -2,6 +2,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:woori_piece/data/repositories/refresh_repository.dart';
+import 'package:woori_piece/data/repositories/repository_providers.dart';
 import 'package:woori_piece/core/result/result.dart';
 import 'package:woori_piece/core/supabase/supabase_providers.dart';
 import 'package:woori_piece/features/scan/photo_days.dart';
@@ -391,12 +393,14 @@ void main() {
   testWidgets('고른 뒤 목록에서 빠진 날짜는 저장에서 제외하고 나머지를 저장한다', (tester) async {
     final gone = PhotoDay(DateTime(2026, 10, 4), '32400');
     final repo = _SharingRepo({});
+    final refresh = _RefreshRepo();
     var days = {day: 2, gone: 1};
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           sessionUserIdProvider.overrideWithValue('me'),
           photoSharingRepositoryProvider.overrideWithValue(repo),
+          refreshRepositoryProvider.overrideWithValue(refresh),
           photoSharingChoicesProvider.overrideWith(
             (ref) async => PhotoSharingChoices(
               coupleId: 'c1',
@@ -421,5 +425,20 @@ void main() {
     await tester.pumpAndSettle();
     expect(repo.approved, {day: 2});
     expect(find.text('저장 중'), findsNothing);
+    // 저장이 곧 최신화다
+    expect(refresh.marks, 1);
   });
+}
+
+class _RefreshRepo implements RefreshRepository {
+  int marks = 0;
+
+  @override
+  Future<Result<void>> markRefreshed() async {
+    marks++;
+    return const Ok(null);
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

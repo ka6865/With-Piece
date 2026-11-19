@@ -6,9 +6,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:woori_piece/app/app.dart';
 import 'package:woori_piece/app/router.dart';
+import 'package:woori_piece/core/result/result.dart';
 import 'package:woori_piece/core/supabase/supabase_providers.dart';
 import 'package:woori_piece/data/repositories/couple_repository.dart';
 import 'package:woori_piece/data/repositories/photo_repository.dart';
+import 'package:woori_piece/data/repositories/refresh_repository.dart';
 import 'package:woori_piece/data/repositories/repository_providers.dart';
 import 'package:woori_piece/data/repositories/signed_url_cache.dart';
 import 'package:woori_piece/data/repositories/trip_repository.dart';
@@ -19,6 +21,7 @@ import 'package:woori_piece/features/home/home_page.dart';
 import 'package:woori_piece/features/home/rewind_page.dart';
 import 'package:woori_piece/features/map/view/mini_puzzle_map.dart';
 import 'package:woori_piece/features/map/view/puzzle_map.dart';
+import 'package:woori_piece/features/refresh/refresh_providers.dart';
 import 'package:woori_piece/features/scan/realtime_sync.dart';
 import 'package:woori_piece/features/scan/scan_providers.dart';
 import 'package:woori_piece/features/scan/trip_candidates.dart';
@@ -62,6 +65,8 @@ Future<void> pumpApp(
   List<TripCandidate> candidates = const [],
   bool rewindSeen = true,
   List<String>? seenPieces,
+  Map<String, RefreshState> refreshStates = const {},
+  RefreshRepository? refreshRepository,
   bool settle = true,
 }) async {
   SharedPreferences.setMockInitialValues({
@@ -89,6 +94,9 @@ Future<void> pumpApp(
         ),
         sessionUserIdProvider.overrideWithValue('me'),
         tripsProvider.overrideWith((ref) async => [...trips]),
+        refreshStatesProvider.overrideWith((ref) async => refreshStates),
+        if (refreshRepository != null)
+          refreshRepositoryProvider.overrideWithValue(refreshRepository),
         homeRegionIdsProvider.overrideWith((ref) async => {'11010'}),
         tripCandidatesProvider.overrideWith((ref) async => candidates),
         couplePhotosProvider(
@@ -328,4 +336,75 @@ void main() {
     expect(map.visitedRegionIds, {'32060'});
     expect(map.homeRegionIds, {'11010'});
   });
+
+  testWidgets('상대가 보낸 최신화 요청은 홈 카드와 탭 점으로 알린다', (tester) async {
+    await pumpApp(
+      tester,
+      refreshStates: {
+        'me': RefreshState(requestedAt: DateTime.now(), requestedBy: 'p'),
+      },
+    );
+    expect(find.text('준호님이 여행 최신화를 요청했어요'), findsOneWidget);
+    final badge = tester.widget<Badge>(
+      find.ancestor(of: find.byIcon(Icons.sync), matching: find.byType(Badge)),
+    );
+    expect(badge.isLabelVisible, isTrue);
+    await tester.tap(find.text('나중에'));
+    await tester.pumpAndSettle();
+    expect(find.text('준호님이 여행 최신화를 요청했어요'), findsNothing);
+    await tester.tap(find.text('최신화'));
+    await tester.pumpAndSettle();
+    // 나중에는 홈 카드만 숨기고 탭에서는 계속 보인다
+    expect(find.text('준호님이 여행 최신화를 요청했어요'), findsOneWidget);
+  });
+
+  testWidgets('최신화 탭은 상대 상태를 보이고 요청을 보낸다', (tester) async {
+    final repository = _FakeRefreshRepository();
+    await pumpApp(
+      tester,
+      location: '/refresh',
+      refreshRepository: repository,
+      refreshStates: {
+        'p': RefreshState(
+          refreshedAt: DateTime.now().subtract(const Duration(days: 3)),
+        ),
+      },
+    );
+    expect(find.text('준호님은 3일 전에 마지막으로 최신화했어요'), findsOneWidget);
+    await tester.tap(find.text('준호님에게 최신화 요청하기'));
+    await tester.pumpAndSettle();
+    expect(repository.requests, 1);
+    expect(find.text('준호님에게 최신화를 요청했어요'), findsOneWidget);
+  });
+
+  testWidgets('방금 요청한 상대에게는 다시 요청하지 못한다', (tester) async {
+    await pumpApp(
+      tester,
+      location: '/refresh',
+      refreshStates: {
+        'p': RefreshState(requestedAt: DateTime.now(), requestedBy: 'me'),
+      },
+    );
+    expect(find.text('준호님의 최신화 기록이 아직 없어요'), findsOneWidget);
+    final button = tester.widget<FilledButton>(
+      find.ancestor(
+        of: find.text('요청을 보냈어요'),
+        matching: find.byWidgetPredicate((w) => w is FilledButton),
+      ),
+    );
+    expect(button.onPressed, isNull);
+  });
+}
+
+class _FakeRefreshRepository implements RefreshRepository {
+  int requests = 0;
+
+  @override
+  Future<Result<void>> request() async {
+    requests++;
+    return const Ok(null);
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

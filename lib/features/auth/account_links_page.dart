@@ -12,7 +12,6 @@ import 'auth_state.dart';
 import 'login_page.dart';
 import '../scan/rescan.dart';
 import '../scan/scan_providers.dart';
-import '../scan/scanner.dart';
 
 // 여러 로그인 방법을 한 계정에 묶는다. Kakao는 이메일이 없어 자동 연동되지 않는다(설계 10.2)
 class AccountLinksPage extends ConsumerStatefulWidget {
@@ -28,33 +27,15 @@ class _AccountLinksPageState extends ConsumerState<AccountLinksPage> {
   Future<void> _rescan() async {
     if (_rescanning) return;
     setState(() => _rescanning = true);
-    Result<void> result = const Err<void>(AppError.unknown);
-    try {
-      result = await rescan(
-        Scanner(
-          ref.read(photoLibraryRepositoryProvider),
-          await ref.read(regionLocatorProvider.future),
-          await ref.read(scanStoreProvider.future),
-        ),
-        () => ref
-          ..invalidate(scanSnapshotProvider)
-          ..invalidate(photoDaysSyncedProvider),
-      );
-    } catch (_) {
-      result = const Err(AppError.unknown);
-    } finally {
-      if (mounted) setState(() => _rescanning = false);
-    }
+    final result = await rescanLibrary(ref);
     if (!mounted) return;
+    setState(() => _rescanning = false);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(
-          result is Ok
-              ? '사진 기록을 다시 확인했어요'
-              : result is Err && result.error == AppError.photoPermission
-              ? '사진 전체 접근을 허용한 뒤 다시 시도해 주세요'
-              : '다시 스캔하지 못했어요. 잠시 뒤 다시 시도해 주세요',
-        ),
+        content: Text(switch (result) {
+          Ok() => '사진 기록을 다시 확인했어요',
+          Err(:final error) => rescanFailureMessage(error),
+        }),
       ),
     );
   }
@@ -111,23 +92,21 @@ class _AccountLinksPageState extends ConsumerState<AccountLinksPage> {
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => context.push('/started-on?edit=true'),
               ),
-              ListTile(
-                title: const Text('비교할 기록 선택'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => context.push('/settings/photo-sharing'),
-              ),
             ],
-            ListTile(
-              title: const Text('전체 다시 스캔'),
-              trailing: _rescanning
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.refresh),
-              onTap: _rescanning ? null : _rescan,
-            ),
+            // 커플이면 다시 스캔과 비교할 기록 선택은 최신화 탭에 있다. 탭이 없는
+            // 단계(혼자 미리보기, 연결을 끊은 뒤)에는 여기서 다시 스캔한다
+            if (ref.watch(scopedCurrentCoupleProvider).value == null)
+              ListTile(
+                title: const Text('전체 다시 스캔'),
+                trailing: _rescanning
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.refresh),
+                onTap: _rescanning ? null : _rescan,
+              ),
             const Divider(),
             if (ref.watch(scopedCurrentCoupleProvider).value != null)
               ListTile(

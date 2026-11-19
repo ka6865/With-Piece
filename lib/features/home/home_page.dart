@@ -12,6 +12,7 @@ import '../album/album_providers.dart';
 import '../album/photo_grid.dart';
 import '../auth/auth_state.dart';
 import '../map/view/mini_puzzle_map.dart';
+import '../refresh/refresh_request_card.dart';
 import '../scan/progress.dart';
 import '../scan/scan_providers.dart';
 import '../trip/trip_candidates_page.dart';
@@ -47,6 +48,7 @@ class HomePage extends ConsumerWidget {
           padding: const EdgeInsets.symmetric(vertical: 16),
           children: [
             if (couple != null) _Header(couple: couple),
+            const RefreshRequestCard(),
             if ((scope, couple?.startedOn) case (
               final scope?,
               final startedOn?,
