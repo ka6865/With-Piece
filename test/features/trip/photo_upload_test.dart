@@ -319,4 +319,28 @@ void main() {
     await tester.pumpAndSettle();
     expect(trips.added, ['32400']);
   });
+
+  testWidgets('고르는 순간 원본을 미리 받고, 다시 골라도 한 번만 받는다', (tester) async {
+    final prefetched = <String>[];
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          tripLocalPhotosProvider(query).overrideWith((ref) async => photos),
+          photoRepositoryProvider.overrideWithValue(FakePhotoRepository()),
+          originalBytesProvider.overrideWithValue((_) async => Uint8List(1)),
+          prefetchOriginalProvider.overrideWithValue((id) async {
+            prefetched.add(id);
+          }),
+        ],
+        child: MaterialApp(home: PhotoUploadPage(query: query)),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tapPhoto(tester, 's0');
+    await tapPhoto(tester, 's1');
+    await tapPhoto(tester, 's0');
+    await tapPhoto(tester, 's0');
+    await tester.pumpAndSettle();
+    expect(prefetched, ['s0', 's1']);
+  });
 }
