@@ -7,6 +7,7 @@ import '../../data/repositories/trip_repository.dart';
 import '../../map_data/geo_region_locator.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../map_data/map_asset_loader.dart';
+import '../auth/account_state.dart';
 import '../auth/auth_state.dart';
 import 'home_regions.dart';
 import 'progress.dart';
@@ -23,19 +24,45 @@ final regionLocatorProvider = FutureProvider<GeoRegionLocator>(
       GeoRegionLocator(await ref.watch(regionMapAssetProvider.future)),
 );
 
-final scanStoreProvider = FutureProvider<ScanStore>(
-  (ref) async => ScanStore(await getApplicationDocumentsDirectory()),
-);
+final scanStoreProvider = FutureProvider.family<ScanStore, String>((
+  ref,
+  userId,
+) async {
+  final documents = await getApplicationDocumentsDirectory();
+  try {
+    await ScanStore.removeLegacySharedCache(documents);
+  } catch (_) {}
+  // Caches는 iOS가 저장 공간이 부족하면 비워 전체 스캔이 다시 일어난다
+  return ScanStore(await getApplicationSupportDirectory(), userId: userId);
+});
 
 // 처음 읽을 때 사진 권한을 묻는다. 권한이 없으면 AppError.photoPermission
-final scanSnapshotProvider = FutureProvider<ScanSnapshot>((ref) async {
-  final scanner = Scanner(
-    ref.watch(photoLibraryRepositoryProvider),
-    await ref.watch(regionLocatorProvider.future),
-    await ref.watch(scanStoreProvider.future),
-  );
-  return (await scanner.scan()).valueOrThrow;
-});
+final scanSnapshotProvider = FutureProvider.family<ScanSnapshot, String>(
+  (ref, userId) async {
+    if (ref.watch(sessionUserIdProvider) != userId) return ScanSnapshot.empty;
+    // 삭제 일정은 복귀·알림마다 다시 읽힌다. 유무가 바뀔 때만 다시 스캔한다
+    var deletionPending = false;
+    try {
+      deletionPending = await ref.watch(
+        myDeletionDateProvider(userId).selectAsync((date) => date != null),
+      );
+    } catch (_) {}
+    if (deletionPending) return ScanSnapshot.empty;
+    final store = await ref.watch(scanStoreProvider(userId).future);
+    if (store.isDeletionPending) return ScanSnapshot.empty;
+    final scanner = Scanner(
+      ref.watch(photoLibraryRepositoryProvider),
+      await ref.watch(regionLocatorProvider.future),
+      store,
+    );
+    return (await scanner.scan()).valueOrThrow;
+  },
+  // 권한 거부와 삭제 차단은 다시 시도해도 결과가 같다
+  retry: (count, error) =>
+      error == AppError.photoPermission || error == AppError.validation
+      ? null
+      : ProviderContainer.defaultRetry(count, error),
+);
 
 final scanSyncProvider = Provider<ScanSync>(
   (ref) => ScanSync(
@@ -55,7 +82,7 @@ final photoDaysSyncedProvider = FutureProvider<void>((ref) async {
   final startedOn = couple?.startedOn;
   if (couple == null || startedOn == null || cancelled) return;
   final sync = ref.watch(scanSyncProvider);
-  final snapshotFuture = ref.watch(scanSnapshotProvider.future);
+  final snapshotFuture = ref.watch(scanSnapshotProvider(userId).future);
   final snapshot = await snapshotFuture;
   if (cancelled || !ref.mounted || ref.read(sessionUserIdProvider) != userId) {
     return;

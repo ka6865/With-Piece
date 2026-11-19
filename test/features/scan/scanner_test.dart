@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -23,6 +24,24 @@ class FakeLibrary extends PhotoLibraryRepository {
   }
 }
 
+class PausingLibrary extends PhotoLibraryRepository {
+  PausingLibrary(this.started, this.release);
+
+  final Completer<void> started;
+  final Completer<void> release;
+  final sinceCalls = <DateTime?>[];
+
+  @override
+  Future<Result<PhotoScan>> readLocatedPhotos({DateTime? since}) async {
+    sinceCalls.add(since);
+    if (sinceCalls.length == 1) {
+      started.complete();
+      await release.future;
+    }
+    return const Ok((total: 0, located: <PhotoMeta>[]));
+  }
+}
+
 void main() {
   final locator = GeoRegionLocator(
     MapAsset.parse(File('assets/map/regions_v1.json').readAsStringSync()),
@@ -31,7 +50,7 @@ void main() {
   late ScanStore store;
   setUp(() {
     dir = Directory.systemTemp.createTempSync('scanner');
-    store = ScanStore(dir);
+    store = ScanStore(dir, userId: 'user-a');
   });
   tearDown(() => dir.deleteSync(recursive: true));
 
@@ -71,5 +90,33 @@ void main() {
       ),
     );
     expect((await store.read()).days, {sokcho: 2});
+  });
+
+  test('전체 스캔이 진행 중이면 증분 스캔은 완료 뒤 최신 결과부터 읽는다', () async {
+    final started = Completer<void>();
+    final release = Completer<void>();
+    final library = PausingLibrary(started, release);
+    final scanner = Scanner(library, locator, store);
+    final full = scanner.scan(full: true);
+    await started.future;
+    final incremental = scanner.scan();
+    await Future<void>.delayed(Duration.zero);
+    expect(library.sinceCalls, [null]);
+
+    release.complete();
+    await full;
+    await incremental;
+    expect(library.sinceCalls[0], isNull);
+    expect(library.sinceCalls[1], isNotNull);
+  });
+
+  test('삭제 대기 중에는 사진첩을 다시 읽지 않는다', () async {
+    ScanStore.blockUser(store.userId);
+    final library = FakeLibrary(const Ok((total: 0, located: <PhotoMeta>[])));
+
+    final result = await Scanner(library, locator, store).scan(full: true);
+
+    expect(result, isA<Err<ScanSnapshot>>());
+    expect(library.sinceCalls, isEmpty);
   });
 }

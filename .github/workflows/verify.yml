@@ -1,0 +1,50 @@
+name: 검증
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          flutter-version: '3.44.4'
+          cache: true
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '26'
+      - uses: supabase/setup-cli@689adcfb80d947100a1eab127289b97d1fb07b13 # v3.2.0
+        with:
+          version: '2.105.0'
+      - name: 로컬 Supabase 시작
+        run: |
+          supabase start -x studio,imgproxy,vector,logflare,edge-runtime,supavisor > "$RUNNER_TEMP/supabase-start.log"
+          mkdir -p env
+          supabase status -o json | jq -e '
+            {SUPABASE_URL: (.API_URL // .SUPABASE_URL),
+             SUPABASE_PUBLISHABLE_KEY: (.PUBLISHABLE_KEY // .ANON_KEY)}
+            | select(.SUPABASE_URL != null and .SUPABASE_PUBLISHABLE_KEY != null)
+          ' > env/local.json
+          curl --fail --silent --show-error http://127.0.0.1:54321/auth/v1/health >/dev/null
+      - name: DB 정책과 동시성 검증
+        run: |
+          supabase test db --local
+          bash supabase/tests/join_race.sh
+          bash supabase/tests/photo_day_shares_race.sh
+      - name: 정적 분석과 앱 테스트
+        run: |
+          flutter pub get --enforce-lockfile
+          dart format --output none --set-exit-if-changed lib test integration_test
+          dart analyze
+          flutter test --no-pub test/app test/core test/data test/features test/map_data test/tool
+          flutter test --no-pub --concurrency=1 test/supabase
+      - name: 계정 정리 함수 테스트
+        run: node --test supabase/functions/daily-cleanup/index_test.mjs

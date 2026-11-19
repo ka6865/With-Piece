@@ -28,25 +28,12 @@ class AccountRepository {
 
   // 아카이브된 커플의 상대가 삭제를 요청했으면 함께한 기록이 사라지는 날
   Future<Result<List<DateTime>>> partnerDeletionDates() => guard(() async {
-    final me = _client.auth.currentUser!.id;
-    final couples = await _client
-        .from('couples')
-        .select('user_a_id, user_b_id')
-        .eq('status', 'archived');
-    final partners = [
-      for (final c in couples)
-        (c['user_a_id'] == me ? c['user_b_id'] : c['user_a_id']) as String,
-    ];
-    if (partners.isEmpty) return const <DateTime>[];
-    final rows = await _client
-        .from('users')
-        .select('deletion_requested_at')
-        .inFilter('id', partners)
-        .not('deletion_requested_at', 'is', null);
-    return [
-      for (final row in rows)
-        _deletionDate(row['deletion_requested_at'] as String?)!,
-    ];
+    final rows = await _client.rpc('archived_couples') as List;
+    return {
+      for (final row in rows.cast<Map<String, dynamic>>())
+        if (row['partner_deletion_requested_at'] case final String requested)
+          _deletionDate(requested)!,
+    }.toList();
   });
 
   static DateTime? _deletionDate(String? requestedAt) => requestedAt == null

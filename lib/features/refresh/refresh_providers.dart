@@ -53,10 +53,10 @@ String partnerRefreshText(String? name, DateTime? refreshedAt, DateTime now) =>
     : '${partnerTopic(name)} ${daysAgo(refreshedAt, now)} 마지막으로 최신화했어요';
 
 bool canRequestRefresh(RefreshState? partner, String myId, DateTime now) {
-  final at = partner?.requestedAt;
-  return partner?.requestedBy != myId ||
-      at == null ||
-      now.difference(at) >= refreshRequestCooldown;
+  final at =
+      partner?.lastRequestedAt ??
+      (partner?.requestedBy == myId ? partner?.requestedAt : null);
+  return at == null || now.difference(at) >= refreshRequestCooldown;
 }
 
 // 저장 전 후보에 없던 기간의 후보 수. 저장 전 후보를 모르면 null

@@ -2,7 +2,7 @@
 # 같은 계정에서 두 승인 저장이 겹쳐도 두 번째 변경이 첫 번째 결과 위에 반영되는지 확인한다.
 set -euo pipefail
 
-db=(psql -X -qAt -v ON_ERROR_STOP=1 postgresql://postgres:postgres@127.0.0.1:54322/postgres)
+db=(psql -X -qAt -v ON_ERROR_STOP=1 "${DB_URL:-postgresql://postgres:postgres@127.0.0.1:54322/postgres}")
 IFS='|' read -r owner partner couple < <("${db[@]}" -c 'select gen_random_uuid(), gen_random_uuid(), gen_random_uuid()')
 scratch="$(mktemp -d)"
 second_app="photo-shares-${couple}"

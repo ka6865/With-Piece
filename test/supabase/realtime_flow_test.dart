@@ -10,10 +10,12 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:woori_piece/core/result/result.dart';
 import 'package:woori_piece/core/supabase/supabase_providers.dart';
 import 'package:woori_piece/data/repositories/couple_repository.dart';
+import 'package:woori_piece/data/repositories/account_repository.dart';
 import 'package:woori_piece/data/repositories/photo_day_repository.dart';
 import 'package:woori_piece/data/repositories/photo_sharing_repository.dart';
 import 'package:woori_piece/data/repositories/trip_repository.dart';
 import 'package:woori_piece/features/album/album_providers.dart';
+import 'package:woori_piece/features/auth/account_state.dart';
 import 'package:woori_piece/features/auth/auth_state.dart';
 import 'package:woori_piece/features/scan/photo_days.dart';
 import 'package:woori_piece/features/scan/realtime_sync.dart';
@@ -22,8 +24,12 @@ import 'package:woori_piece/features/scan/trip_candidates.dart';
 
 import 'support.dart';
 
-Future<void> _until(FutureOr<bool> Function() ready, String reason) async {
-  final deadline = DateTime.now().add(const Duration(seconds: 10));
+Future<void> _until(
+  FutureOr<bool> Function() ready,
+  String reason, {
+  Duration timeout = const Duration(seconds: 10),
+}) async {
+  final deadline = DateTime.now().add(timeout);
   while (DateTime.now().isBefore(deadline)) {
     if (await ready()) return;
     await Future<void>.delayed(const Duration(milliseconds: 25));
@@ -99,7 +105,10 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final skip = await localStackSkipReason();
 
-  test('연결 대기는 private 사용자 알림으로 갱신하며 같은 커플 조회는 채널을 유지한다', () async {
+  test('초대 대기는 합류 알림을 보완 조회하며 같은 커플 구독을 유지한다', () async {
+    WidgetsBinding.instance.handleAppLifecycleStateChanged(
+      AppLifecycleState.resumed,
+    );
     final a = await signUpLocal();
     final b = await signUpLocal();
     final container = ProviderContainer(
@@ -113,15 +122,26 @@ Future<void> main() async {
     final sync = container.listen(realtimeSyncProvider, (_, _) {});
     addTearDown(sync.close);
     expect(await container.read(currentCoupleProvider.future), isNull);
-    await _joined(a, 'user:${a.auth.currentUser!.id}');
-    // 첫 가입 보정 조회가 끝난 뒤 수락해야 알림 수신을 검증한다
+    final userChannel = await _joined(a, 'user:${a.auth.currentUser!.id}');
+    // 연결된 채널에서 합류 알림만 누락된 경우를 고정한다.
+    userChannel.off('broadcast', {'event': 'membership'});
     await container.pump();
     expect(await container.read(currentCoupleProvider.future), isNull);
-    final id = await _couple(a, b);
+    final inviter = CoupleRepository(a);
+    final joiner = CoupleRepository(b);
+    final invite = (await inviter.createInvite()).valueOrThrow;
+    final userId = a.auth.currentUser!.id;
+    expect(
+      (await container.read(myInviteProvider(userId).future))?.code,
+      invite.code,
+    );
+    expect((await joiner.join(invite.code)).valueOrThrow, JoinOutcome.joined);
+    final id = (await joiner.current()).valueOrThrow!.id;
     await _until(
       () async =>
           (await container.read(currentCoupleProvider.future))?.id == id,
       '상대 합류를 읽지 못했어요',
+      timeout: const Duration(seconds: 20),
     );
     final channel = await _joined(a, 'couple:$id');
     await _joined(a, 'couple-shares:$id');
@@ -205,7 +225,9 @@ Future<void> main() async {
           (await container.read(matchedDaysProvider.future)).length == 1,
       '상대 재승인으로 교집합이 갱신되지 않았어요',
     );
-    await b.from('photo_days').delete().eq('user_id', b.auth.currentUser!.id);
+    (await CoupleRepository(
+      b,
+    ).setStartedOn(DateTime(2026, 10, 4))).valueOrThrow;
     await _until(
       () async => (await container.read(matchedDaysProvider.future)).isEmpty,
       '원본 삭제의 승인 연쇄 삭제를 읽지 못했어요',
@@ -256,6 +278,8 @@ Future<void> main() async {
     final messages = <Map<String, dynamic>>[];
     await _listen(b, 'couple:$id', messages.add);
     await _listen(b, 'couple-shares:$id', messages.add);
+    final userMessages = <Map<String, dynamic>>[];
+    await _listen(b, 'user:${b.auth.currentUser!.id}', userMessages.add);
     final publicMessages = <Map<String, dynamic>>[];
     await expectLater(
       _listen(outsider, 'couple:$id', (_) {}),
@@ -323,7 +347,15 @@ Future<void> main() async {
     );
     messages.clear();
     // 가입 시 캐시된 권한이 남아 있어도 원본 연쇄 삭제는 빈 무효화 알림뿐이다.
-    await a.from('photo_days').delete().eq('user_id', a.auth.currentUser!.id);
+    (await AccountRepository(a).requestDeletion()).valueOrThrow;
+    await _until(
+      () => userMessages.any((m) => m['event'] == 'archive'),
+      '계정 삭제 요청의 상대 아카이브 알림 미수신',
+    );
+    final archivePayload = Map<String, dynamic>.from(
+      userMessages.firstWhere((m) => m['event'] == 'archive')['payload'] as Map,
+    )..remove('id');
+    expect(archivePayload, isEmpty);
     await _until(
       () => messages.any((m) => m['event'] == 'shares'),
       '기존 승인 채널의 연쇄 삭제 알림 미수신',
@@ -355,6 +387,26 @@ Future<void> main() async {
     final container = ProviderContainer(
       overrides: [
         supabaseClientProvider.overrideWithValue(a),
+        myDeletionDateProvider(userId).overrideWith((ref) async {
+          count('deletion');
+          return null;
+        }),
+        partnerDeletionDatesProvider(userId).overrideWith((ref) async {
+          count('partnerDeletion');
+          return [];
+        }),
+        archivedCouplesProvider.overrideWith((ref, userId) async {
+          count('archivedCouples');
+          return [];
+        }),
+        archivedTripsProvider.overrideWith((ref, scope) async {
+          count('archivedTrips');
+          return [];
+        }),
+        archivedPhotosProvider.overrideWith((ref, scope) async {
+          count('archivedPhotos');
+          return [];
+        }),
         tripsProvider.overrideWith((ref) async {
           count('trips');
           return [];
@@ -385,6 +437,17 @@ Future<void> main() async {
       container.listen(overridesProvider, (_, _) {}),
       container.listen(matchedDaysProvider, (_, _) {}),
       container.listen(couplePhotosProvider(userId), (_, _) {}),
+      container.listen(myDeletionDateProvider(userId), (_, _) {}),
+      container.listen(partnerDeletionDatesProvider(userId), (_, _) {}),
+      container.listen(archivedCouplesProvider(userId), (_, _) {}),
+      container.listen(
+        archivedTripsProvider((userId: userId, coupleId: id)),
+        (_, _) {},
+      ),
+      container.listen(
+        archivedPhotosProvider((userId: userId, coupleId: id)),
+        (_, _) {},
+      ),
     ];
     addTearDown(() {
       sync.close();
@@ -404,6 +467,15 @@ Future<void> main() async {
         container.read(overridesProvider.future),
         container.read(matchedDaysProvider.future),
         container.read(couplePhotosProvider(userId).future),
+        container.read(myDeletionDateProvider(userId).future),
+        container.read(partnerDeletionDatesProvider(userId).future),
+        container.read(archivedCouplesProvider(userId).future),
+        container.read(
+          archivedTripsProvider((userId: userId, coupleId: id)).future,
+        ),
+        container.read(
+          archivedPhotosProvider((userId: userId, coupleId: id)).future,
+        ),
       ]);
     }
 
@@ -412,14 +484,35 @@ Future<void> main() async {
       final before = Map<String, int>.of(reads);
       _deliver(event == 'shares' ? shares : couple, event);
       await settle();
-      expect(reads[event], before[event]! + 1);
-      for (final other in before.keys.where((k) => k != event)) {
+      final refreshed = switch (event) {
+        'photos' => {'photos'},
+        'trips' => {'trips'},
+        'overrides' => {'overrides'},
+        _ => {'shares'},
+      };
+      for (final name in before.keys) {
         expect(
-          reads[other],
-          before[other],
-          reason: '$event 알림으로 $other 조회를 반복하지 않는다',
+          reads[name],
+          before[name]! + (refreshed.contains(name) ? 1 : 0),
+          reason: '$event 알림의 provider 무효화 범위를 지킨다: $name',
         );
       }
+    }
+    final beforeArchive = Map<String, int>.of(reads);
+    _deliver(user, 'archive');
+    await settle();
+    for (final name in [
+      'deletion',
+      'partnerDeletion',
+      'archivedCouples',
+      'archivedTrips',
+      'archivedPhotos',
+    ]) {
+      expect(
+        reads[name],
+        beforeArchive[name]! + 1,
+        reason: 'archive 알림은 $name 을 갱신한다',
+      );
     }
     final beforeReconnect = Map<String, int>.of(reads);
     final channels = [user, couple, shares];

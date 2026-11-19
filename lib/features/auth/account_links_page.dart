@@ -48,6 +48,7 @@ class _AccountLinksPageState extends ConsumerState<AccountLinksPage> {
         ? const AsyncLoading<List<UserIdentity>>()
         : ref.watch(identitiesProvider(userId));
     void toastOnError(Result<void> result) {
+      if (!mounted) return;
       if (result is Err && context.mounted) {
         ScaffoldMessenger.of(
           context,
@@ -131,23 +132,46 @@ class _AccountLinksPageState extends ConsumerState<AccountLinksPage> {
                 style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
               onTap: () async {
-                if (!await _confirmDeletion(context)) return;
-                final result = await ref
-                    .read(accountRepositoryProvider)
-                    .requestDeletion();
-                toastOnError(result);
+                if (!await _confirmDeletion(context) || !context.mounted) {
+                  return;
+                }
+                // 요청 중 화면을 떠나도 상태를 갱신하도록 컨테이너를 미리 잡는다
+                final container = ProviderScope.containerOf(
+                  context,
+                  listen: false,
+                );
+                final deletingUserId = ref.read(sessionUserIdProvider);
+                final accountRepository = ref.read(accountRepositoryProvider);
+                final scanSync = ref.read(scanSyncProvider);
+                final scanStoreFuture = deletingUserId == null
+                    ? null
+                    : ref.read(scanStoreProvider(deletingUserId).future);
+                final result = await accountRepository.requestDeletion();
                 if (result is Ok) {
-                  final userId = ref.read(sessionUserIdProvider);
-                  if (userId != null) {
-                    await ref.read(scanSyncProvider).clearForUser(userId);
-                    ref
-                      ..invalidate(scanSnapshotProvider)
-                      ..invalidate(photoDaysSyncedProvider);
+                  if (deletingUserId != null) {
+                    try {
+                      await (await scanStoreFuture!).clearForDeletion();
+                    } catch (_) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('기기 스캔 기록을 지우지 못했어요')),
+                        );
+                      }
+                    }
+                    await scanSync.clearForUser(deletingUserId);
                   }
                 }
-                ref
-                  ..invalidate(currentCoupleProvider)
-                  ..invalidate(myDeletionDateProvider);
+                if (result is Ok &&
+                    deletingUserId != null &&
+                    container.read(sessionUserIdProvider) == deletingUserId) {
+                  container
+                    ..invalidate(partnerDeletionDatesProvider(deletingUserId))
+                    ..invalidate(scanSnapshotProvider(deletingUserId))
+                    ..invalidate(photoDaysSyncedProvider)
+                    ..invalidate(myDeletionDateProvider(deletingUserId))
+                    ..invalidate(currentCoupleProvider);
+                }
+                if (mounted) toastOnError(result);
               },
             ),
           ],

@@ -6,7 +6,6 @@ import '../../core/result/result.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../data/repositories/repository_providers.dart';
 import '../auth/auth_state.dart';
-import '../scan/home_regions.dart';
 import '../scan/rescan.dart';
 import '../scan/scan_providers.dart';
 import '../scan/sharing_groups.dart';
@@ -45,16 +44,12 @@ class _RefreshPageState extends ConsumerState<RefreshPage> {
   }
 
   // 사는 곳을 저장하고 같은 흐름에서 커플 지도의 생활권으로 지정한다(설계 4.4)
-  Future<void> _setHome(String coupleId, String regionId) async {
+  Future<void> _setHome(String regionId) async {
+    final container = ProviderScope.containerOf(context, listen: false);
     final saved = await ref
         .read(coupleRepositoryProvider)
         .setHomeRegion(regionId);
-    if (saved is Ok) {
-      await ref
-          .read(tripRepositoryProvider)
-          .setOverride(coupleId, regionId, OverrideKind.home);
-    }
-    ref
+    container
       ..invalidate(currentCoupleProvider)
       ..invalidate(overridesProvider);
     if (saved is Err && mounted) _toast('사는 곳을 저장하지 못했어요');
@@ -128,7 +123,7 @@ class _RefreshPageState extends ConsumerState<RefreshPage> {
           if (couple != null)
             _HomeRegionCard(
               homeRegionId: couple.myHomeRegionId,
-              onPick: (id) => _setHome(couple.id, id),
+              onPick: _setHome,
             ),
           Card(
             child: Padding(
@@ -179,8 +174,12 @@ class _HomeRegionCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final names = ref.watch(regionNamesProvider).value ?? const {};
+    final userId = ref.watch(sessionUserIdProvider);
+    final scan = userId == null
+        ? null
+        : ref.watch(scanSnapshotProvider(userId)).unwrapPrevious().value;
     final suggested = homeRegionId == null
-        ? suggestHomeRegion(ref.watch(scanSnapshotProvider).value?.days ?? {})
+        ? suggestHomeRegion(scan?.days ?? {})
         : null;
     Future<void> pickOther() async {
       final id = await pickRegion(context, title: '내가 사는 곳');

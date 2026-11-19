@@ -120,7 +120,7 @@ void main() {
     final couples = await pumpPage(tester);
     await chooseDate(tester, '01/02/2020');
     expect(
-      find.textContaining('동기화하면 두 사람의 새 날짜 이전 스캔 기록과 비교 승인이 삭제'),
+      find.textContaining('변경하면 서버에 있는 두 사람의 새 날짜 이전 스캔 기록과 비교 승인이 삭제'),
       findsOneWidget,
     );
     expect(find.textContaining('삭제된 비교 승인은'), findsOneWidget);

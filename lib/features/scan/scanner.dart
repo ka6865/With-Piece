@@ -14,20 +14,23 @@ class Scanner {
 
   // shortcut: 증분은 촬영(생성) 시각 기준이라 나중에 들여온 옛 사진은 놓친다.
   // 설정의 "다시 스캔"(full)이 메운다
-  Future<Result<ScanSnapshot>> scan({bool full = false}) async {
-    final previous = full ? ScanSnapshot.empty : await store.read();
-    final startedAt = DateTime.now();
-    final result = await library.readLocatedPhotos(since: previous.scannedAt);
-    switch (result) {
-      case Err(:final error):
-        return Err(error);
-      case Ok(:final value):
-        final days = aggregatePhotoDays(value.located, locator);
-        final next = full
-            ? ScanSnapshot(days, startedAt)
-            : previous.merge(days, startedAt);
-        await store.write(next);
-        return Ok(next);
-    }
-  }
+  Future<Result<ScanSnapshot>> scan({bool full = false}) => store.runExclusive(
+    () async {
+      if (store.isDeletionPending) return const Err(AppError.validation);
+      final previous = full ? ScanSnapshot.empty : await store.read();
+      final startedAt = DateTime.now();
+      final result = await library.readLocatedPhotos(since: previous.scannedAt);
+      switch (result) {
+        case Err(:final error):
+          return Err(error);
+        case Ok(:final value):
+          final days = aggregatePhotoDays(value.located, locator);
+          final next = full
+              ? ScanSnapshot(days, startedAt)
+              : previous.merge(days, startedAt);
+          await store.write(next);
+          return Ok(next);
+      }
+    },
+  );
 }

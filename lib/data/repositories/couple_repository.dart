@@ -116,39 +116,25 @@ class CoupleRepository {
     ),
   );
 
-  // 사는 곳은 사람에 속한다(설계 6.2 거주지). 본인 행만 고칠 수 있다
+  // 내 거주지와 현재 커플의 생활권 지정은 RPC 한 번으로 저장한다
   Future<Result<void>> setHomeRegion(String regionId) => guard(
-    () => _client
-        .from('users')
-        .update({'home_region_id': regionId})
-        .eq('id', _client.auth.currentUser!.id),
+    () => _client.rpc('set_home_region', params: {'p_region_id': regionId}),
   );
 
   Future<Result<void>> archive() => guard(() => _client.rpc('archive_couple'));
 
   Future<Result<Couple?>> current() => guard(() async {
-    final me = _client.auth.currentUser!.id;
-    // 사용자와 활성 커플을 한 요청으로 읽는다. 앱 시작·Realtime 가입마다 불린다
-    final user = await _client
-        .from('users')
-        .select(
-          'nickname, home_region_id, couple:couples!users_active_couple_fk(id, user_a_id, user_b_id, started_on, '
-          'a:users!couples_user_a_id_fkey(nickname), b:users!couples_user_b_id_fkey(nickname))',
-        )
-        .eq('id', me)
-        .single();
-    final row = user['couple'] as Map<String, dynamic>?;
-    if (row == null) return null;
+    final rows = await _client.rpc('current_couple') as List;
+    if (rows.isEmpty) return null;
+    final row = rows.single as Map<String, dynamic>;
     final startedOn = row['started_on'] as String?;
-    final iAmA = row['user_a_id'] == me;
-    final partner = (iAmA ? row['b'] : row['a']) as Map<String, dynamic>?;
     return Couple(
-      id: row['id'] as String,
-      partnerId: (iAmA ? row['user_b_id'] : row['user_a_id']) as String,
+      id: row['couple_id'] as String,
+      partnerId: row['partner_id'] as String,
       startedOn: startedOn == null ? null : DateTime.parse(startedOn),
-      myName: user['nickname'] as String?,
-      partnerName: partner?['nickname'] as String?,
-      myHomeRegionId: user['home_region_id'] as String?,
+      myName: row['my_name'] as String?,
+      partnerName: row['partner_name'] as String?,
+      myHomeRegionId: row['my_home_region_id'] as String?,
     );
   });
 
@@ -158,32 +144,14 @@ class CoupleRepository {
   );
 
   Future<Result<List<ArchivedCouple>>> archived() => guard(() async {
-    final me = _client.auth.currentUser!.id;
-    final couples = await _client
-        .from('couples')
-        .select('id, user_a_id, user_b_id, archived_at')
-        .eq('status', 'archived')
-        .order('archived_at', ascending: false);
-    if (couples.isEmpty) return const <ArchivedCouple>[];
-    String partnerOf(Map<String, dynamic> c) =>
-        (c['user_a_id'] == me ? c['user_b_id'] : c['user_a_id']) as String;
-    final users = {
-      for (final u
-          in await _client
-              .from('users')
-              .select('id, nickname, deletion_requested_at')
-              .inFilter('id', [for (final c in couples) partnerOf(c)]))
-        u['id'] as String: u,
-    };
+    final rows = await _client.rpc('archived_couples') as List;
     return [
-      for (final c in couples)
+      for (final row in rows.cast<Map<String, dynamic>>())
         ArchivedCouple(
-          id: c['id'] as String,
-          partnerName: users[partnerOf(c)]?['nickname'] as String? ?? '지난 연인',
-          archivedAt: DateTime.parse(c['archived_at'] as String).toLocal(),
-          partnerDeletionDate: switch (users[partnerOf(
-            c,
-          )]?['deletion_requested_at']) {
+          id: row['couple_id'] as String,
+          partnerName: row['partner_name'] as String? ?? '지난 연인',
+          archivedAt: DateTime.parse(row['archived_at'] as String).toLocal(),
+          partnerDeletionDate: switch (row['partner_deletion_requested_at']) {
             final String requested => DateTime.parse(
               requested,
             ).toLocal().add(const Duration(days: 30)),

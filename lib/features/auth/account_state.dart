@@ -5,14 +5,25 @@ import 'package:go_router/go_router.dart';
 import '../../core/result/result.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../data/repositories/repository_providers.dart';
+import '../scan/scan_providers.dart';
+import '../scan/scan_store.dart';
 
 final myDeletionDateProvider = FutureProvider.family<DateTime?, String>((
   ref,
   userId,
 ) async {
   if (ref.watch(sessionUserIdProvider) != userId) return null;
-  return (await ref.watch(accountRepositoryProvider).myDeletionDate())
+  final blockAtRequest = ScanStore.deletionBlockFor(userId);
+  final date = (await ref.watch(accountRepositoryProvider).myDeletionDate())
       .valueOrThrow;
+  if (ref.mounted && ref.read(sessionUserIdProvider) == userId) {
+    ScanStore.applyDeletionStatus(
+      userId,
+      blockAtRequest: blockAtRequest,
+      pending: date != null,
+    );
+  }
+  return date;
 });
 
 final partnerDeletionDatesProvider =
@@ -55,11 +66,17 @@ class DeletionBanners extends ConsumerWidget {
                   switch (result) {
                     case Ok():
                       if (userId case final id?) {
+                        ScanStore.allowUserAfterDeletionCanceled(id);
                         ref.invalidate(myDeletionDateProvider(id));
+                        ref.invalidate(partnerDeletionDatesProvider(id));
+                        ref
+                          ..invalidate(scanSnapshotProvider(id))
+                          ..invalidate(photoDaysSyncedProvider);
                       }
                     case Err(error: AppError.validation):
                       if (userId case final id?) {
                         ref.invalidate(myDeletionDateProvider(id));
+                        ref.invalidate(partnerDeletionDatesProvider(id));
                       }
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(

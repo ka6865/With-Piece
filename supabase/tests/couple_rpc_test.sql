@@ -66,7 +66,8 @@ select is(join_couple((select code from c_invite2)),
 -- 사귄 날과 교집합
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000a1","role":"authenticated"}', true);
 select is((select count(*)::int from couple_matched_days()), 0, '사귄 날이 없으면 교집합 없음');
-select throws_ok($$ select set_started_on(current_date + 1) $$, 'P0001', 'future_date', '미래 날짜 거부');
+select throws_ok($$ select set_started_on((now() at time zone 'Asia/Seoul')::date + 1) $$,
+  'P0001', 'future_date', '한국 날짜의 미래 기준일을 거부한다');
 select set_started_on('2026-01-01');
 reset role;
 insert into photo_days values

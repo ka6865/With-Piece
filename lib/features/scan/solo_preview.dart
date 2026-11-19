@@ -5,18 +5,23 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:photo_manager/photo_manager.dart';
 
 import '../../core/result/result.dart';
+import '../../core/supabase/supabase_providers.dart';
 import '../../map_data/map_asset_loader.dart';
 import '../map/view/puzzle_map.dart';
 import 'scan_providers.dart';
+import 'scan_store.dart';
 
 // 혼자일 때 내 사진첩으로 칠한 지도를 흐리게 보여 초대를 유도한다(설계 5.6).
-// 기기 안의 스캔 결과만 쓰고 서버를 부르지 않는다
+// 미리보기에는 기기 안의 스캔 결과만 쓴다
 class SoloPreview extends ConsumerWidget {
   const SoloPreview({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final scan = ref.watch(scanSnapshotProvider);
+    final userId = ref.watch(sessionUserIdProvider);
+    final scan = userId == null
+        ? const AsyncData<ScanSnapshot>(ScanSnapshot.empty)
+        : ref.watch(scanSnapshotProvider(userId));
     final provinces = ref.watch(provinceMapAssetProvider).value;
     final regions = ref.watch(regionMapAssetProvider).value;
     if (scan.error == AppError.photoPermission) {
@@ -30,7 +35,7 @@ class SoloPreview extends ConsumerWidget {
         ],
       );
     }
-    final snapshot = scan.value;
+    final snapshot = scan.unwrapPrevious().value;
     if (snapshot == null || provinces == null || regions == null) {
       return const SizedBox.shrink();
     }

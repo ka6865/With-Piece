@@ -84,38 +84,19 @@ class CommentRepository {
       guard(() => _client.from(kind.table).delete().eq('id', id));
 
   // 여행마다 상대가 남긴 가장 최근 댓글 시각. 앨범의 "새 댓글" 표시에 쓴다(설계 6.2)
-  Future<Result<Map<String, DateTime>>> partnerLatestByTrip(
-    String coupleId,
-    String me,
-  ) => guard(() async {
-    final guestbook = _client
-        .from(CommentKind.trip.table)
-        .select('trip_id, created_at')
-        .eq('couple_id', coupleId)
-        .neq('author_id', me)
-        .order('id');
-    final photo = _client
-        .from(CommentKind.photo.table)
-        .select('created_at, photos!inner(trip_id)')
-        .eq('couple_id', coupleId)
-        .neq('author_id', me)
-        .order('id');
-    final latest = <String, DateTime>{};
-    void note(String tripId, String at) {
-      final time = DateTime.parse(at);
-      final seen = latest[tripId];
-      if (seen == null || time.isAfter(seen)) latest[tripId] = time;
-    }
-
-    for (final row in await fetchAll((f, t) => guestbook.range(f, t))) {
-      note(row['trip_id'] as String, row['created_at'] as String);
-    }
-    for (final row in await fetchAll((f, t) => photo.range(f, t))) {
-      note(
-        (row['photos'] as Map)['trip_id'] as String,
-        row['created_at'] as String,
-      );
-    }
-    return latest;
-  });
+  Future<Result<Map<String, DateTime>>> partnerLatestByTrip(String coupleId) =>
+      guard(() async {
+        final rows = await fetchAll((from, to) async {
+          final rows = await _client
+              .rpc('partner_latest_comments', params: {'p_couple_id': coupleId})
+              .range(from, to);
+          return List<Map<String, dynamic>>.from(rows as List);
+        });
+        return {
+          for (final row in rows)
+            row['trip_id'] as String: DateTime.parse(
+              row['latest_at'] as String,
+            ),
+        };
+      });
 }

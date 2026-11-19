@@ -7,18 +7,15 @@ import 'package:woori_piece/data/repositories/repository_providers.dart';
 import 'package:woori_piece/features/auth/auth_state.dart';
 import 'package:woori_piece/features/refresh/refresh_page.dart';
 import 'package:woori_piece/features/refresh/refresh_providers.dart';
-import 'package:woori_piece/features/scan/home_regions.dart';
 import 'package:woori_piece/features/scan/photo_days.dart';
 import 'package:woori_piece/features/scan/scan_providers.dart';
 import 'package:woori_piece/features/scan/scan_store.dart';
 
 import '../auth/fakes.dart';
-import '../trip/fakes.dart';
 
 void main() {
   testWidgets('추천한 사는 곳을 정하면 저장하고 생활권으로 지정한다', (tester) async {
     final couples = FakeCoupleRepository();
-    final trips = FakeTripRepository();
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -28,12 +25,11 @@ void main() {
           ),
           refreshStatesProvider.overrideWith((ref) async => const {}),
           coupleRepositoryProvider.overrideWithValue(couples),
-          tripRepositoryProvider.overrideWithValue(trips),
           regionNamesProvider.overrideWith(
             (ref) async => {'osan': '오산시', 'jeju': '제주시'},
           ),
           scanSnapshotProvider.overrideWith(
-            (ref) async => ScanSnapshot({
+            (ref, userId) async => ScanSnapshot({
               PhotoDay(DateTime(2025, 1, 1), 'osan'): 1,
               PhotoDay(DateTime(2025, 1, 2), 'osan'): 1,
               PhotoDay(DateTime(2025, 5, 1), 'jeju'): 300,
@@ -48,6 +44,5 @@ void main() {
     await tester.tap(find.text('정하기'));
     await tester.pumpAndSettle();
     expect(couples.homeRegions, ['osan']);
-    expect(trips.overrideCalls, [('osan', OverrideKind.home)]);
   });
 }

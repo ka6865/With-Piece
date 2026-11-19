@@ -49,4 +49,35 @@ Future<void> main() async {
       (await AccountRepository(b).myDeletionDate()).valueOrThrow,
     );
   }, skip: skip);
+
+  test('재결합 뒤 다시 삭제하면 지난 기록은 각각 보이고 배너는 한 번 표시한다', () async {
+    final a = await signUpLocal();
+    final b = await signUpLocal();
+    addTearDown(a.dispose);
+    addTearDown(b.dispose);
+    final left = CoupleRepository(a);
+    final right = CoupleRepository(b);
+    Future<void> connect() async {
+      final invite = (await left.createInvite()).valueOrThrow;
+      expect((await right.join(invite.code)).valueOrThrow, JoinOutcome.joined);
+    }
+
+    await connect();
+    final previous = (await left.current()).valueOrThrow!.id;
+    (await left.archive()).valueOrThrow;
+    await connect();
+    final current = (await left.current()).valueOrThrow!.id;
+    expect(current, isNot(previous));
+
+    (await AccountRepository(a).requestDeletion()).valueOrThrow;
+    final archives = (await right.archived()).valueOrThrow;
+    expect(
+      archives.map((archive) => archive.id),
+      unorderedEquals([previous, current]),
+    );
+    expect(
+      (await AccountRepository(b).partnerDeletionDates()).valueOrThrow,
+      hasLength(1),
+    );
+  }, skip: skip);
 }

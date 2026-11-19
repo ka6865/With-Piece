@@ -174,6 +174,8 @@ class _InvitePageState extends ConsumerState<InvitePage> {
             '이미 연인과 연결했다면 다른 방법으로 로그인했을 수 있어요. '
             '로그아웃한 뒤 처음에 썼던 방법으로 다시 로그인해 보세요.',
           ),
+          const SizedBox(height: 12),
+          const Text('새로 연결하면 지난 기록은 아카이브에 남고, 새 커플에서는 사진 기록 공유를 다시 허용해야 해요.'),
         ],
       ),
     );

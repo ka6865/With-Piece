@@ -1,5 +1,5 @@
 begin;
-select plan(25);
+select plan(27);
 
 -- A·B 커플1, C·D 커플2, E 미소속. 준비는 postgres 권한으로 한다
 insert into auth.users (id) values
@@ -39,7 +39,7 @@ select throws_ok($$ insert into trip_regions (trip_id, couple_id, region_id) val
   ('30000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000001', '32410') $$,
   '23503', null, '남의 여행 id에 자기 couple_id를 붙여도 복합 외래키가 막는다');
 select is((select count(*)::int from photo_days), 1, 'A는 자기 photo_days를 본다');
-select is((select count(*)::int from users), 2, 'A는 자기와 B만 본다');
+select is((select count(*)::int from users), 1, 'A는 본인 프로필만 직접 조회한다');
 select throws_ok($$ update users set active_couple_id = null
   where id = '00000000-0000-0000-0000-0000000000a1' $$,
   '42501', null, 'active_couple_id는 직접 바꿀 수 없다');
@@ -47,6 +47,11 @@ select lives_ok($$ update users set nickname = '가'
   where id = '00000000-0000-0000-0000-0000000000a1' $$, '닉네임은 바꾼다');
 select is((select count(*)::int from couple_invites), 0, '초대는 직접 읽을 수 없다');
 select is((select count(*)::int from regions), 246, 'regions는 누구나 읽는다');
+
+select ok(not has_table_privilege('authenticated', 'public.photo_days', 'INSERT,UPDATE,DELETE'),
+  '사진 집계 변경은 공개 테이블 대신 동기화 RPC로만 한다');
+select ok(not has_table_privilege('authenticated', 'public.photo_day_shares', 'INSERT,UPDATE,DELETE'),
+  '비교 승인 변경은 공개 테이블 대신 승인 RPC로만 한다');
 
 -- Storage
 select lives_ok($$ insert into storage.objects (bucket_id, name) values
@@ -57,12 +62,12 @@ select throws_ok($$ insert into storage.objects (bucket_id, name) values
   '42501', null, '남의 커플 경로에는 올리지 못한다');
 select throws_ok($$ insert into storage.objects (bucket_id, name) values
   ('photos', 'not-a-uuid/x/full/a.heic') $$,
-  '22P02', null, '첫 세그먼트가 uuid가 아니면 거부');
+  '42501', null, '첫 세그먼트가 uuid가 아니면 거부');
 select is((select count(*)::int from storage.objects where bucket_id = 'photos'
   and name like '20000000%'), 0, '남의 커플 사진을 보지 못한다');
-select lives_ok($$ insert into storage.objects (bucket_id, name) values
+select throws_ok($$ insert into storage.objects (bucket_id, name) values
   ('photos', '10000000-0000-0000-0000-000000000001/../20000000-0000-0000-0000-000000000002/y.heic') $$,
-  '..이 든 이름도 자기 커플 영역의 객체로 생긴다');
+  '42501', null, '사진 저장 경로에 여행·크기 세그먼트가 없으면 거부한다');
 
 -- B: 상대의 photo_days를 보지 못한다
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000b1","role":"authenticated"}', true);

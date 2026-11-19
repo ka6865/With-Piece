@@ -120,7 +120,7 @@ void main() {
           ),
           photoDaysSyncedProvider.overrideWith((ref) async {}),
           scanSnapshotProvider.overrideWith(
-            (ref) async => ScanSnapshot({}, DateTime(2026, 11, 1)),
+            (ref, userId) async => ScanSnapshot({}, DateTime(2026, 11, 1)),
           ),
           regionNamesProvider.overrideWith((ref) async => {'32060': '속초시'}),
           photoSharingRepositoryProvider.overrideWithValue(repo),

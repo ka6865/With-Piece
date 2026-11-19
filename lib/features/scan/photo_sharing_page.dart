@@ -35,11 +35,12 @@ final photoSharingRepositoryProvider = Provider<PhotoSharingRepository>(
 final photoSharingChoicesProvider = FutureProvider<PhotoSharingChoices>((
   ref,
 ) async {
-  ref.watch(sessionUserIdProvider);
+  final userId = ref.watch(sessionUserIdProvider);
+  if (userId == null) throw AppError.validation;
   final couple = await ref.watch(currentCoupleProvider.future);
   if (couple == null || couple.startedOn == null) throw AppError.validation;
   await ref.watch(photoDaysSyncedProvider.future);
-  final snapshot = await ref.watch(scanSnapshotProvider.future);
+  final snapshot = await ref.watch(scanSnapshotProvider(userId).future);
   final approved =
       (await ref
               .watch(photoSharingRepositoryProvider)

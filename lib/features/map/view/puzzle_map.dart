@@ -54,7 +54,7 @@ class _PuzzleMapState extends State<PuzzleMap> {
     }
     _layoutAsset = widget.asset;
     _regionNames = {for (final f in widget.asset.features) f.id: f.name};
-    return _layout = PuzzleLayout.build(asset: widget.asset, size: size);
+    return _layout = PuzzleLayout.cached(asset: widget.asset, size: size);
   }
 
   // 두 애셋의 본토 bbox가 같아 같은 크기면 같은 투영이 된다
@@ -68,7 +68,7 @@ class _PuzzleMapState extends State<PuzzleMap> {
       return cached;
     }
     _pieceLayoutAsset = asset;
-    return _pieceLayout = PuzzleLayout.build(asset: asset, size: size);
+    return _pieceLayout = PuzzleLayout.cached(asset: asset, size: size);
   }
 
   // 경계 층의 VoiceOver는 시도 단위로 읽으므로 조각 코드를 시도 코드로 올린다
@@ -139,6 +139,7 @@ class _PuzzleMapState extends State<PuzzleMap> {
                         : const {},
                     regionNames: _regionNames,
                     colorScheme: scheme,
+                    onRegionTap: widget.onRegionTap,
                     showSea: widget.showSea && pieceLayout == null,
                     bordersOnly: pieceLayout != null,
                     covers: widget.covers,

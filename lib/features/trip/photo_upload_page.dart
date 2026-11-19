@@ -1,7 +1,12 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:photo_manager/photo_manager.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/media/heic_encoder.dart';
 import '../../core/result/result.dart';
@@ -47,13 +52,15 @@ final photoRepositoryProvider = Provider<PhotoRepository>(
       PhotoRepository(ref.watch(supabaseClientProvider), const HeicEncoder()),
 );
 
-final originalBytesProvider = Provider<Future<Uint8List?> Function(String)>(
-  (ref) => ref.watch(photoLibraryRepositoryProvider).originalBytes,
-);
+final originalBytesProvider =
+    Provider<Future<Uint8List?> Function(String, PMCancelToken)>(
+      (ref) => ref.watch(photoLibraryRepositoryProvider).originalBytes,
+    );
 
-final prefetchOriginalProvider = Provider<Future<void> Function(String)>(
-  (ref) => ref.watch(photoLibraryRepositoryProvider).prefetchOriginal,
-);
+final prefetchOriginalProvider =
+    Provider<Future<void> Function(String, PMCancelToken)>(
+      (ref) => ref.watch(photoLibraryRepositoryProvider).prefetchOriginal,
+    );
 
 // 기간 안에 찍힌 내 사진. 조각은 기기 안에서 판정하고 서버로 보내지 않는다(설계 5.1).
 // 후보 카드 미리보기와 사진 고르기 화면이 같이 쓴다
@@ -121,42 +128,119 @@ class _PhotoUploadPageState extends ConsumerState<PhotoUploadPage> {
   final _uploadIds = <String, String>{};
   int? _done;
   var _hasFailures = false;
-  // 고르는 순간 iCloud 원본을 미리 받는다. 올리기를 누를 때는 이미 기기에 있다
-  final _prefetchQueue = <String>[];
+  static const _originalTimeout = Duration(seconds: 45);
+  static const _uploadTimeout = Duration(minutes: 2);
+  static const _pendingPrefix = 'pending_photo_upload:';
+  // 이 기간 안에 다시 올리면 같은 사진 ID를 써서 중복 행을 막는다
+  static const _pendingTtl = Duration(days: 7);
+  final _prefetchQueue = <String>{};
   final _prefetched = <String>{};
-  var _prefetching = 0;
+  final _prefetching = <String, PMCancelToken>{};
+  final _reading = <PMCancelToken>{};
+  final _cancelOriginal = <PMCancelToken, VoidCallback>{};
+  var _stopRequested = false;
 
-  void _prefetch(Iterable<String> ids) {
-    for (final id in ids) {
-      if (_prefetched.add(id)) _prefetchQueue.add(id);
+  void _cancel(PMCancelToken token) {
+    _cancelOriginal[token]?.call();
+    unawaited(token.cancelRequest().catchError((Object _) {}));
+  }
+
+  Future<T?> _bounded<T>(
+    Future<T> Function() operation,
+    Duration timeout, {
+    PMCancelToken? token,
+  }) {
+    // 중단하면 원본 읽기가 끝나기를 기다리지 않고 바로 null을 돌려준다
+    final stopped = Completer<T?>();
+    if (token != null) {
+      _cancelOriginal[token] = () {
+        if (!stopped.isCompleted) stopped.complete(null);
+      };
     }
+    return Future.any<T?>([Future.sync(operation), stopped.future])
+        .timeout(
+          timeout,
+          onTimeout: () {
+            if (token != null) _cancel(token);
+            return null;
+          },
+        )
+        .whenComplete(() => _cancelOriginal.remove(token));
+  }
+
+  // 실패한 뒤 다시 올리지 않은 사진의 ID는 남는다. 오래된 것은 지운다
+  static void _sweepPendingIds(SharedPreferences prefs) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    for (final key in prefs.getKeys()) {
+      if (!key.startsWith(_pendingPrefix)) continue;
+      final savedAt = int.tryParse(prefs.getString(key)?.split(' ').last ?? '');
+      if (savedAt == null || now - savedAt > _pendingTtl.inMilliseconds) {
+        unawaited(prefs.remove(key).catchError((Object _) => false));
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final token in [..._prefetching.values, ..._reading]) {
+      _cancel(token);
+    }
+    super.dispose();
+  }
+
+  void _drainPrefetch() {
+    if (_done != null) return;
     final prefetch = ref.read(prefetchOriginalProvider);
-    // 회선을 업로드와 나눠 쓰므로 2장씩만 받는다
-    while (_prefetching < 2 && _prefetchQueue.isNotEmpty) {
-      final id = _prefetchQueue.removeAt(0);
-      _prefetching++;
-      prefetch(id).catchError((_) {}).whenComplete(() {
-        _prefetching--;
-        if (mounted) _prefetch(const []);
-      });
+    while (_prefetching.length < 2 && _prefetchQueue.isNotEmpty) {
+      final id = _prefetchQueue.first;
+      _prefetchQueue.remove(id);
+      final token = PMCancelToken();
+      _prefetching[id] = token;
+      unawaited(
+        _bounded(
+              () async {
+                await prefetch(id, token);
+                return true;
+              },
+              _originalTimeout,
+              token: token,
+            )
+            .then((received) {
+              if (received == true && (_selected?.contains(id) ?? false)) {
+                _prefetched.add(id);
+              }
+            })
+            .catchError((Object _) {})
+            .whenComplete(() {
+              _prefetching.remove(id);
+              if (mounted) _drainPrefetch();
+            }),
+      );
     }
   }
 
   void _setSelected(Set<String> next) {
-    _prefetch(next.difference(_selected ?? const {}));
+    final added = next.difference(_selected ?? const {});
+    _prefetchQueue.removeWhere((id) => !next.contains(id));
+    for (final entry in _prefetching.entries) {
+      if (!next.contains(entry.key)) _cancel(entry.value);
+    }
+    _prefetchQueue.addAll(
+      added.where(
+        (id) => !_prefetched.contains(id) && !_prefetching.containsKey(id),
+      ),
+    );
     setState(() => _selected = next);
+    _drainPrefetch();
   }
 
   Future<void> _pickMore() async {
     final picked = await ref.read(libraryPickerProvider)(context);
     if (picked == null || !mounted) return;
-    setState(() {
-      for (final p in picked) {
-        if (!_extra.any((e) => e.assetId == p.assetId)) _extra.add(p);
-        _selected!.add(p.assetId);
-      }
-    });
-    _prefetch(picked.map((p) => p.assetId));
+    for (final p in picked) {
+      if (!_extra.any((e) => e.assetId == p.assetId)) _extra.add(p);
+    }
+    _setSelected({..._selected!, ...picked.map((p) => p.assetId)});
   }
 
   // 여행에 없는 조각에서 찍은 사진을 올렸으면 그 조각도 여행에 넣을지 묻는다
@@ -187,10 +271,11 @@ class _PhotoUploadPageState extends ConsumerState<PhotoUploadPage> {
         ],
       ),
     );
-    if (add != true) return;
+    if (add != true || !mounted) return;
     final repo = ref.read(tripRepositoryProvider);
     final query = widget.query;
     final result = await repo.addRegions(query.tripId, query.coupleId, extra);
+    if (!mounted) return;
     final trip = ref
         .read(tripsProvider)
         .value
@@ -198,6 +283,7 @@ class _PhotoUploadPageState extends ConsumerState<PhotoUploadPage> {
         .firstOrNull;
     final title = trip == null ? null : retitledTrip(trip, extra, names);
     if (result is Ok && title != null) await repo.rename(query.tripId, title);
+    if (!mounted) return;
     ref.invalidate(tripsProvider);
     if (result is Err && mounted) {
       ScaffoldMessenger.of(
@@ -213,49 +299,112 @@ class _PhotoUploadPageState extends ConsumerState<PhotoUploadPage> {
     ];
     final repo = ref.read(photoRepositoryProvider);
     final readOriginal = ref.read(originalBytesProvider);
+    final userId = ref.read(sessionUserIdProvider);
+    final prefs = userId == null ? null : ref.read(sharedPreferencesProvider);
+    if (prefs != null) _sweepPendingIds(prefs);
     final failed = <LocalPhoto>[];
     final done = <LocalPhoto>[];
     Future<void> uploadOne(LocalPhoto photo) async {
+      final token = PMCancelToken();
+      _reading.add(token);
       try {
-        final original = await readOriginal(photo.assetId);
-        final result = original == null
-            ? const Err<String>(AppError.unknown)
-            : await repo.upload(
-                id: _uploadIds.putIfAbsent(photo.assetId, uuidV4),
-                coupleId: widget.query.coupleId,
-                tripId: widget.query.tripId,
-                regionId: photo.regionId,
-                takenAt: photo.takenAt,
-                original: original,
-              );
-        (result is Err ? failed : done).add(photo);
+        final original = await _bounded(
+          () => readOriginal(photo.assetId, token),
+          _originalTimeout,
+          token: token,
+        );
+        _reading.remove(token);
+        if (original == null || _stopRequested || !mounted) {
+          failed.add(photo);
+          return;
+        }
+        final query = widget.query;
+        // 저장 결과를 받기 전에 앱이 종료돼도 다음 시도에서 같은 사진 ID를 쓴다.
+        final digest = sha256.convert(
+          utf8.encode(
+            jsonEncode([userId, query.coupleId, query.tripId, photo.assetId]),
+          ),
+        );
+        final pendingKey = '$_pendingPrefix$digest';
+        final previous = prefs?.getString(pendingKey)?.split(' ').first;
+        final id = _uploadIds.putIfAbsent(
+          pendingKey,
+          () => previous ?? uuidV4(),
+        );
+        if (prefs != null &&
+            !await prefs.setString(
+              pendingKey,
+              '$id ${DateTime.now().millisecondsSinceEpoch}',
+            )) {
+          failed.add(photo);
+          return;
+        }
+        if (_stopRequested ||
+            !mounted ||
+            ref.read(sessionUserIdProvider) != userId) {
+          failed.add(photo);
+          return;
+        }
+        final result = await _bounded(
+          () => repo.upload(
+            id: id,
+            coupleId: query.coupleId,
+            tripId: query.tripId,
+            regionId: photo.regionId,
+            takenAt: photo.takenAt,
+            original: original,
+          ),
+          _uploadTimeout,
+        );
+        if (result is! Ok) {
+          failed.add(photo);
+        } else {
+          done.add(photo);
+          if (prefs != null) {
+            unawaited(prefs.remove(pendingKey).catchError((Object _) => false));
+          }
+        }
       } catch (_) {
         failed.add(photo);
+      } finally {
+        _reading.remove(token);
       }
     }
 
+    _stopRequested = false;
+    _prefetchQueue.clear();
+    for (final token in _prefetching.values) {
+      _cancel(token);
+    }
     setState(() => _done = 0);
-    // 원본 읽기·변환·업로드를 사진마다 기다리지 않도록 몇 장씩 동시에 처리한다.
-    // 실기기 측정에서 업로드(장당 약 0.6초)가 가장 커서 5장으로 늘렸다(2026-11-20)
     var next = 0;
     Future<void> worker() async {
-      while (next < chosen.length) {
+      while (!_stopRequested && mounted && next < chosen.length) {
         final photo = chosen[next++];
         await uploadOne(photo);
-        if (!mounted) return;
-        setState(() => _done = _done! + 1);
+        if (mounted) setState(() => _done = _done! + 1);
       }
     }
 
     await Future.wait([for (var i = 0; i < uploadWorkers; i++) worker()]);
     if (!mounted) return;
-    await _offerRegions(regionsOutsideTrip(done, widget.query.regionIds));
+    if (!_stopRequested && ref.read(sessionUserIdProvider) == userId) {
+      await _offerRegions(regionsOutsideTrip(done, widget.query.regionIds));
+    }
     if (!mounted) return;
+    final stopped = _stopRequested;
+    final pending = [...failed, ...chosen.skip(next)];
     setState(() {
-      _hasFailures = failed.isNotEmpty;
-      _selected = failed.map((photo) => photo.assetId).toSet();
+      _hasFailures = pending.isNotEmpty;
+      _selected = pending.map((photo) => photo.assetId).toSet();
       _done = null;
     });
+    if (stopped) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('올리기를 중단했어요. ${done.length}장을 올렸어요')),
+      );
+      return;
+    }
     if (failed.isNotEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('${failed.length}장을 올리지 못했어요. 실패한 사진만 선택했어요.')),
@@ -265,7 +414,9 @@ class _PhotoUploadPageState extends ConsumerState<PhotoUploadPage> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text('${chosen.length}장을 올렸어요')));
-    Navigator.of(context).maybePop();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) Navigator.of(context).maybePop();
+    });
   }
 
   @override
@@ -289,10 +440,17 @@ class _PhotoUploadPageState extends ConsumerState<PhotoUploadPage> {
           title: const Text('사진 고르기'),
           actions: [
             TextButton(
-              onPressed: uploading
+              onPressed: !uploading
+                  ? () => Navigator.of(context).maybePop()
+                  : _stopRequested
                   ? null
-                  : () => Navigator.of(context).maybePop(),
-              child: const Text('나중에'),
+                  : () {
+                      setState(() => _stopRequested = true);
+                      for (final token in _reading) {
+                        _cancel(token);
+                      }
+                    },
+              child: Text(uploading ? '중단' : '나중에'),
             ),
           ],
         ),

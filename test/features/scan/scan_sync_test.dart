@@ -48,6 +48,25 @@ void main() {
     );
     expect(repo.calls, hasLength(2));
   });
+  test('결과가 같아도 새 스캔이면 다른 기기가 덮어쓴 서버 목록을 다시 맞춘다', () async {
+    SharedPreferences.setMockInitialValues({});
+    final repo = CountingRepo();
+    final sync = ScanSync(repo, await SharedPreferences.getInstance());
+    final day = PhotoDay(DateTime(2026, 10, 3), '32060');
+    await sync.sync(
+      ScanSnapshot({day: 2}, DateTime(2026, 11, 1)),
+      DateTime(2026, 1, 1),
+      userId: 'a',
+      coupleId: 'c1',
+    );
+    await sync.sync(
+      ScanSnapshot({day: 2}, DateTime(2026, 11, 2)),
+      DateTime(2026, 1, 1),
+      userId: 'a',
+      coupleId: 'c1',
+    );
+    expect(repo.calls, hasLength(2));
+  });
   test('계정과 커플이 바뀌거나 삭제 후 무효화하면 같은 스캔도 다시 올린다', () async {
     SharedPreferences.setMockInitialValues({});
     final repo = CountingRepo();

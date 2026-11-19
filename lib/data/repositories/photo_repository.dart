@@ -1,6 +1,3 @@
-import 'dart:async';
-import 'dart:io';
-
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -65,8 +62,13 @@ class PhotoRepository {
     final photoId = id ?? uuidV4();
     final Map<String, Uint8List> encoded;
     final ImageFormat format;
+    final HeicInfo info;
     try {
       (encoded, format) = await _encodeAll(original);
+      info = await _encoder.inspect(encoded['full']!);
+      if (info.hasGps || (await _encoder.inspect(encoded['thumb']!)).hasGps) {
+        return const Err(AppError.validation);
+      }
     } catch (error) {
       return Err(appErrorOf(error));
     }
@@ -101,7 +103,6 @@ class PhotoRepository {
             }
           }(),
       ]);
-      final info = await _encoder.inspect(encoded['full']!);
       insertAttempted = true;
       try {
         await _client.from('photos').insert({
@@ -146,11 +147,11 @@ class PhotoRepository {
   }
 
   bool _isUncertain(Object error) => switch (error) {
-    SocketException() || TimeoutException() => true,
     StorageException(statusCode: final statusCode?) =>
       (int.tryParse(statusCode) ?? 500) >= 500,
-    StorageException() => true,
-    _ => false,
+    // 프로그램 오류는 요청 전에 난다. 그 밖의 오류(연결 끊김 등)는 서버에 남았을 수 있다
+    Error() => false,
+    _ => true,
   };
 
   Future<(Map<String, Uint8List>, ImageFormat)> _encodeAll(
@@ -188,20 +189,35 @@ class PhotoRepository {
     final rows = await fetchAll((from, to) => query.range(from, to));
     return [
       for (final row in rows)
-        PhotoRecord(
-          id: row['id'] as String,
-          tripId: row['trip_id'] as String,
-          regionId: row['region_id'] as String?,
-          objectKey: row['object_key'] as String,
-          uploadedBy: row['uploaded_by'] as String,
-          takenAt: row['taken_at'] == null
-              ? null
-              : DateTime.parse(row['taken_at'] as String).toLocal(),
-          width: row['width'] as int,
-          height: row['height'] as int,
-        ),
+        if (_photoKeyMatches(
+          row['object_key'] as String,
+          coupleId,
+          row['trip_id'] as String,
+        ))
+          PhotoRecord(
+            id: row['id'] as String,
+            tripId: row['trip_id'] as String,
+            regionId: row['region_id'] as String?,
+            objectKey: row['object_key'] as String,
+            uploadedBy: row['uploaded_by'] as String,
+            takenAt: row['taken_at'] == null
+                ? null
+                : DateTime.parse(row['taken_at'] as String).toLocal(),
+            width: row['width'] as int,
+            height: row['height'] as int,
+          ),
     ];
   });
+
+  static final _photoFilename = RegExp(r'^[A-Za-z0-9_-]+[.](heic|jpg|jpeg)$');
+
+  static bool _photoKeyMatches(String key, String coupleId, String tripId) {
+    final parts = key.split('/');
+    return parts.length == 3 &&
+        parts[0] == coupleId &&
+        parts[1] == tripId &&
+        _photoFilename.hasMatch(parts[2]);
+  }
 
   // 올린 사람만 지운다. RLS가 막으면 오류 없이 0행이 지워지므로 지워진 행으로 확인한다
   Future<Result<void>> delete(PhotoRecord photo) => guard(() async {
