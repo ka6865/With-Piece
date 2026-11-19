@@ -118,7 +118,9 @@ void main() {
     expect(find.text('날짜 바꾸기'), findsOneWidget);
     await tester.tap(find.text('날짜 바꾸기'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('OK'));
+    // 달력은 기기 언어와 상관없이 한국어다
+    expect(find.text('취소'), findsOneWidget);
+    await tester.tap(find.text('확인'));
     await tester.pumpAndSettle();
     expect(couples.startedOnCalls, [DateTime(2020, 1, 1)]);
   });
