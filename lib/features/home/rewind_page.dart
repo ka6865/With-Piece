@@ -66,9 +66,11 @@ class RewindPage extends StatefulWidget {
   // 테스트가 오늘을 고정할 수 있게 둔다
   final DateTime? today;
 
-  // 되감기·머무름·세어 올라오기의 시간 비율
-  static const rewindEnd = 0.55;
-  static const holdEnd = 0.75;
+  // 되감기 4.5초, 사귄 날에서 1초, 세어 올라오기 2.5초, D+N에서 1초(2026-11-20 사용자 요청)
+  static const total = Duration(seconds: 9);
+  static const rewindEnd = 4.5 / 9;
+  static const holdEnd = 5.5 / 9;
+  static const countEnd = 8 / 9;
 
   @override
   State<RewindPage> createState() => _RewindPageState();
@@ -78,7 +80,7 @@ class _RewindPageState extends State<RewindPage>
     with SingleTickerProviderStateMixin {
   // 사귄 날이 아무리 멀어도 하루씩 넘기지 않고 같은 길이 안에서 가속해 되감는다
   late final _controller =
-      AnimationController(vsync: this, duration: const Duration(seconds: 7))
+      AnimationController(vsync: this, duration: RewindPage.total)
         ..addStatusListener((status) {
           if (status == AnimationStatus.completed) _close();
         })
@@ -162,7 +164,10 @@ class _RewindPageState extends State<RewindPage>
       label = '우리가 시작한 날';
     } else {
       final p = Curves.easeInCubic.transform(
-        (t - RewindPage.holdEnd) / (1 - RewindPage.holdEnd),
+        math.min(
+          1,
+          (t - RewindPage.holdEnd) / (RewindPage.countEnd - RewindPage.holdEnd),
+        ),
       );
       value = 'D+${math.max(1, (total * p).round())}';
       label = '그리고 오늘까지';
