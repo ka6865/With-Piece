@@ -18,6 +18,7 @@ import 'package:woori_piece/features/home/couple_days.dart';
 import 'package:woori_piece/features/home/home_page.dart';
 import 'package:woori_piece/features/home/rewind_page.dart';
 import 'package:woori_piece/features/map/view/mini_puzzle_map.dart';
+import 'package:woori_piece/features/map/view/puzzle_map.dart';
 import 'package:woori_piece/features/scan/realtime_sync.dart';
 import 'package:woori_piece/features/scan/scan_providers.dart';
 import 'package:woori_piece/features/scan/trip_candidates.dart';
@@ -312,5 +313,19 @@ void main() {
       '11010',
       '37020',
     });
+  });
+
+  testWidgets('전국 지도는 시도가 아니라 채운 조각을 칠한다', (tester) async {
+    await pumpApp(
+      tester,
+      trips: [
+        trip('t1', '속초시', 1, ['32060']),
+      ],
+    );
+    await tester.tap(find.text('지도'));
+    await tester.pumpAndSettle();
+    final map = tester.widget<PuzzleMap>(find.byType(PuzzleMap));
+    expect(map.visitedRegionIds, {'32060'});
+    expect(map.homeRegionIds, {'11010'});
   });
 }

@@ -211,7 +211,7 @@ void main() {
             : const ProvinceMapPage(provinceId: '32'),
       );
       final before = tester.widget<PuzzleMap>(find.byType(PuzzleMap));
-      expect(before.visitedRegionIds, contains(national ? '32' : '32060'));
+      expect(before.visitedRegionIds, contains('32060'));
       final pending = Completer<Result<List<Trip>>>();
       final home = Completer<Set<String>>();
       f.trips.response = pending.future;

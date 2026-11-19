@@ -44,8 +44,13 @@ class NationalMapPage extends ConsumerWidget {
                 Expanded(
                   child: PuzzleMap(
                     asset: provinceAsset,
-                    // 한 조각이라도 칠해진 시도를 채운다
-                    visitedRegionIds: visited.keys.toSet(),
+                    // 시도를 통째로 칠하지 않고 다녀온 조각만 칠한다. 탭은 시도 단위다
+                    pieceAsset: regionAsset,
+                    visitedRegionIds: filledRegionIds(
+                      trips ?? const [],
+                      const {},
+                    ),
+                    homeRegionIds: home ?? const {},
                     showSea: true,
                     onRegionTap: (provinceId) =>
                         context.push('/province/$provinceId'),

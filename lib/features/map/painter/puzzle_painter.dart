@@ -12,6 +12,7 @@ class PuzzlePainter extends CustomPainter {
     this.homeRegionIds = const {},
     this.showSea = false,
     this.compact = false,
+    this.bordersOnly = false,
   });
 
   static const hatchGap = 6.0;
@@ -28,6 +29,9 @@ class PuzzlePainter extends CustomPainter {
   final bool showSea;
   // 홈 카드의 작은 지도. 점선이 뭉쳐 보이지 않게 빈 조각 테두리를 가는 실선으로 그린다
   final bool compact;
+  // 전국 지도에서 조각 층 위에 시도 경계만 굵게 긋는다. 인셋 안은 조각 애셋과
+  // 인셋 범위가 미세하게 달라 선이 어긋나므로 그리지 않는다(인셋 틀이 대신한다)
+  final bool bordersOnly;
 
   static Path buildPath(ScaledPolygon polygon) {
     final path = Path()..fillType = PathFillType.evenOdd;
@@ -43,6 +47,18 @@ class PuzzlePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    if (bordersOnly) {
+      final provinceBorder = Paint()
+        ..color = colorScheme.onSurfaceVariant
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.6;
+      for (final polygon in layout.polygons) {
+        if (polygon.insetId == null) {
+          canvas.drawPath(buildPath(polygon), provinceBorder);
+        }
+      }
+      return;
+    }
     final visitedFill = Paint()..color = colorScheme.primaryContainer;
     // 미방문 조각도 옅게 채워 윤곽이 배경에 묻히지 않게 한다
     final emptyFill = Paint()..color = colorScheme.surfaceContainerHighest;
@@ -139,7 +155,8 @@ class PuzzlePainter extends CustomPainter {
       oldDelegate.regionNames != regionNames ||
       oldDelegate.colorScheme != colorScheme ||
       oldDelegate.showSea != showSea ||
-      oldDelegate.compact != compact;
+      oldDelegate.compact != compact ||
+      oldDelegate.bordersOnly != bordersOnly;
 
   @override
   bool shouldRebuildSemantics(PuzzlePainter oldDelegate) =>
