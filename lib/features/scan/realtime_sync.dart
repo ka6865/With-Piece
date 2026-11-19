@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../data/repositories/repository_providers.dart';
 import '../album/album_providers.dart';
+import '../album/comments.dart';
 import '../auth/auth_state.dart';
 import 'photo_sharing_page.dart';
 import 'scan_providers.dart';
@@ -38,10 +39,17 @@ final realtimeSyncProvider = Provider<void>((ref) {
       ..invalidate(archivedPhotosProvider);
   }
 
+  void refreshComments() {
+    ref
+      ..invalidate(commentsProvider)
+      ..invalidate(partnerCommentTimesProvider);
+  }
+
   void refreshCouple() {
     if (!isCurrent()) return;
     refreshTrips();
     refreshPhotos();
+    refreshComments();
     ref
       ..invalidate(overridesProvider)
       ..invalidate(currentCoupleProvider)
@@ -127,6 +135,7 @@ final realtimeSyncProvider = Provider<void>((ref) {
     on('trips', refreshTrips);
     on('overrides', () => ref.invalidate(overridesProvider));
     on('photos', refreshPhotos);
+    on('comments', refreshComments);
     on('couple', () {
       ref
         ..invalidate(currentCoupleProvider)

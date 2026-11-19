@@ -4,7 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/supabase/supabase_providers.dart';
 
 import '../../data/repositories/photo_repository.dart';
+import '../../data/repositories/comment_repository.dart';
 import 'album_providers.dart';
+import 'comments.dart';
 
 // 썸네일 격자. 서명 URL은 이 화면의 사진만 한 번에 묶어 받는다(설계 8.2)
 class PhotoGrid extends ConsumerWidget {
@@ -104,6 +106,32 @@ class _FullPhotoPage extends ConsumerWidget {
       appBar: AppBar(
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            tooltip: '댓글',
+            icon: const Icon(Icons.chat_bubble_outline),
+            onPressed: () => showModalBottomSheet<void>(
+              context: context,
+              isScrollControlled: true,
+              showDragHandle: true,
+              builder: (context) => Padding(
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  0,
+                  16,
+                  16 + MediaQuery.viewInsetsOf(context).bottom,
+                ),
+                child: SingleChildScrollView(
+                  child: CommentSection(
+                    kind: CommentKind.photo,
+                    targetId: photo.id,
+                    coupleId: photo.coupleId,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
       body: Center(
         child: FutureBuilder<Map<String, String>>(

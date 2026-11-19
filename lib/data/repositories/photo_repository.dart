@@ -36,6 +36,9 @@ class PhotoRecord {
     return '${objectKey.substring(0, slash)}/$size${objectKey.substring(slash)}';
   }
 
+  // 경로 첫 세그먼트가 couple_id다. Storage RLS가 같은 규칙으로 판정한다(설계 9.2)
+  String get coupleId => objectKey.substring(0, objectKey.indexOf('/'));
+
   String get fullPath => pathFor('full');
   String get thumbPath => pathFor('thumb');
 }
