@@ -149,6 +149,8 @@ class PhotoRepository {
   bool _isUncertain(Object error) => switch (error) {
     StorageException(statusCode: final statusCode?) =>
       (int.tryParse(statusCode) ?? 500) >= 500,
+    // 프로그램 오류는 요청 전에 난다. 그 밖의 오류(연결 끊김 등)는 서버에 남았을 수 있다
+    Error() => false,
     _ => true,
   };
 

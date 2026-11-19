@@ -48,7 +48,7 @@ void main() {
     );
     expect(repo.calls, hasLength(2));
   });
-  test('결과가 같으면 전체 재스캔의 새 시각만으로 다시 올리지 않는다', () async {
+  test('결과가 같아도 새 스캔이면 다른 기기가 덮어쓴 서버 목록을 다시 맞춘다', () async {
     SharedPreferences.setMockInitialValues({});
     final repo = CountingRepo();
     final sync = ScanSync(repo, await SharedPreferences.getInstance());
@@ -65,7 +65,7 @@ void main() {
       userId: 'a',
       coupleId: 'c1',
     );
-    expect(repo.calls, hasLength(1));
+    expect(repo.calls, hasLength(2));
   });
   test('계정과 커플이 바뀌거나 삭제 후 무효화하면 같은 스캔도 다시 올린다', () async {
     SharedPreferences.setMockInitialValues({});

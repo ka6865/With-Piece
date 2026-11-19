@@ -67,9 +67,15 @@ class ScanStore {
   static Future<void> removeLegacySharedCache(Directory documents) {
     final path = documents.absolute.path;
     return _legacyCleanup.putIfAbsent(path, () async {
-      for (final name in ['photo_days.json', 'photo_days.json.tmp']) {
-        final file = File('$path/$name');
-        if (await file.exists()) await file.delete();
+      try {
+        for (final name in ['photo_days.json', 'photo_days.json.tmp']) {
+          final file = File('$path/$name');
+          if (await file.exists()) await file.delete();
+        }
+      } catch (_) {
+        // 실패를 기억하지 않아야 다음 읽기에서 다시 지운다
+        _legacyCleanup.remove(path);
+        rethrow;
       }
     });
   }
@@ -80,10 +86,6 @@ class ScanStore {
   File get _file => File('${_userDirectory.path}/photo_days.json');
 
   bool get isDeletionPending => _blockedUsers.containsKey(userId);
-
-  void blockForDeletion() => blockUser(userId);
-
-  void allowAfterDeletionCanceled() => allowUserAfterDeletionCanceled(userId);
 
   Future<T> runExclusive<T>(Future<T> Function() action) {
     final key = _userDirectory.absolute.path;
@@ -98,7 +100,7 @@ class ScanStore {
   }
 
   Future<void> clearForDeletion() {
-    blockForDeletion();
+    blockUser(userId);
     return runExclusive(() async {
       if (await _userDirectory.exists()) {
         await _userDirectory.delete(recursive: true);

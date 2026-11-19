@@ -32,18 +32,22 @@ final scanStoreProvider = FutureProvider.family<ScanStore, String>((
   try {
     await ScanStore.removeLegacySharedCache(documents);
   } catch (_) {}
-  return ScanStore(await getApplicationCacheDirectory(), userId: userId);
+  // Caches는 iOS가 저장 공간이 부족하면 비워 전체 스캔이 다시 일어난다
+  return ScanStore(await getApplicationSupportDirectory(), userId: userId);
 });
 
 // 처음 읽을 때 사진 권한을 묻는다. 권한이 없으면 AppError.photoPermission
 final scanSnapshotProvider = FutureProvider.family<ScanSnapshot, String>(
   (ref, userId) async {
     if (ref.watch(sessionUserIdProvider) != userId) return ScanSnapshot.empty;
-    DateTime? deletionDate;
+    // 삭제 일정은 복귀·알림마다 다시 읽힌다. 유무가 바뀔 때만 다시 스캔한다
+    var deletionPending = false;
     try {
-      deletionDate = await ref.watch(myDeletionDateProvider(userId).future);
+      deletionPending = await ref.watch(
+        myDeletionDateProvider(userId).selectAsync((date) => date != null),
+      );
     } catch (_) {}
-    if (deletionDate != null) return ScanSnapshot.empty;
+    if (deletionPending) return ScanSnapshot.empty;
     final store = await ref.watch(scanStoreProvider(userId).future);
     if (store.isDeletionPending) return ScanSnapshot.empty;
     final scanner = Scanner(
@@ -53,7 +57,9 @@ final scanSnapshotProvider = FutureProvider.family<ScanSnapshot, String>(
     );
     return (await scanner.scan()).valueOrThrow;
   },
-  retry: (count, error) => error == AppError.photoPermission
+  // 권한 거부와 삭제 차단은 다시 시도해도 결과가 같다
+  retry: (count, error) =>
+      error == AppError.photoPermission || error == AppError.validation
       ? null
       : ProviderContainer.defaultRetry(count, error),
 );

@@ -289,8 +289,11 @@ void main() {
     expect(find.text('6장 다시 올리기'), findsOneWidget);
   });
 
-  testWidgets('화면을 다시 열어도 실패한 업로드는 저장한 ID를 재사용한다', (tester) async {
-    SharedPreferences.setMockInitialValues({});
+  testWidgets('화면을 다시 열어도 실패한 업로드는 저장한 ID를 재사용하고 오래된 ID는 지운다', (tester) async {
+    SharedPreferences.setMockInitialValues({
+      'pending_photo_upload:stale': 'old-id 0',
+      'other': 'kept',
+    });
     final prefs = await SharedPreferences.getInstance();
     final repo = FakePhotoRepository()..failFirst.add(0);
     Future<void> open() async {
@@ -318,12 +321,13 @@ void main() {
     await open();
     final id = repo.calls.single.id;
     expect(id, isNotNull);
-    expect(prefs.getKeys(), hasLength(1));
+    expect(prefs.getKeys(), hasLength(2));
+    expect(prefs.getKeys(), isNot(contains('pending_photo_upload:stale')));
     await tester.pumpWidget(const SizedBox());
     await open();
     expect(repo.calls, hasLength(2));
     expect(repo.calls.last.id, id);
-    expect(prefs.getKeys(), isEmpty);
+    expect(prefs.getKeys(), {'other'});
   });
 
   test('여행에 없는 조각의 사진과 바뀐 자동 제목을 찾는다', () {

@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:photo_manager/photo_manager.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/media/heic_encoder.dart';
 import '../../core/result/result.dart';
@@ -129,6 +130,9 @@ class _PhotoUploadPageState extends ConsumerState<PhotoUploadPage> {
   var _hasFailures = false;
   static const _originalTimeout = Duration(seconds: 45);
   static const _uploadTimeout = Duration(minutes: 2);
+  static const _pendingPrefix = 'pending_photo_upload:';
+  // 이 기간 안에 다시 올리면 같은 사진 ID를 써서 중복 행을 막는다
+  static const _pendingTtl = Duration(days: 7);
   final _prefetchQueue = <String>{};
   final _prefetched = <String>{};
   final _prefetching = <String, PMCancelToken>{};
@@ -145,32 +149,34 @@ class _PhotoUploadPageState extends ConsumerState<PhotoUploadPage> {
     Future<T> Function() operation,
     Duration timeout, {
     PMCancelToken? token,
-  }) async {
-    final result = Completer<T?>();
-    void stop() {
-      if (!result.isCompleted) result.complete(null);
+  }) {
+    // 중단하면 원본 읽기가 끝나기를 기다리지 않고 바로 null을 돌려준다
+    final stopped = Completer<T?>();
+    if (token != null) {
+      _cancelOriginal[token] = () {
+        if (!stopped.isCompleted) stopped.complete(null);
+      };
     }
+    return Future.any<T?>([Future.sync(operation), stopped.future])
+        .timeout(
+          timeout,
+          onTimeout: () {
+            if (token != null) _cancel(token);
+            return null;
+          },
+        )
+        .whenComplete(() => _cancelOriginal.remove(token));
+  }
 
-    if (token != null) _cancelOriginal[token] = stop;
-    final timer = Timer(timeout, () {
-      stop();
-      if (token != null) _cancel(token);
-    });
-    try {
-      unawaited(
-        Future.sync(operation).then<void>(
-          (value) {
-            if (!result.isCompleted) result.complete(value);
-          },
-          onError: (Object error, StackTrace stack) {
-            if (!result.isCompleted) result.completeError(error, stack);
-          },
-        ),
-      );
-      return await result.future;
-    } finally {
-      timer.cancel();
-      _cancelOriginal.remove(token);
+  // 실패한 뒤 다시 올리지 않은 사진의 ID는 남는다. 오래된 것은 지운다
+  static void _sweepPendingIds(SharedPreferences prefs) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    for (final key in prefs.getKeys()) {
+      if (!key.startsWith(_pendingPrefix)) continue;
+      final savedAt = int.tryParse(prefs.getString(key)?.split(' ').last ?? '');
+      if (savedAt == null || now - savedAt > _pendingTtl.inMilliseconds) {
+        unawaited(prefs.remove(key).catchError((Object _) => false));
+      }
     }
   }
 
@@ -295,6 +301,7 @@ class _PhotoUploadPageState extends ConsumerState<PhotoUploadPage> {
     final readOriginal = ref.read(originalBytesProvider);
     final userId = ref.read(sessionUserIdProvider);
     final prefs = userId == null ? null : ref.read(sharedPreferencesProvider);
+    if (prefs != null) _sweepPendingIds(prefs);
     final failed = <LocalPhoto>[];
     final done = <LocalPhoto>[];
     Future<void> uploadOne(LocalPhoto photo) async {
@@ -318,15 +325,17 @@ class _PhotoUploadPageState extends ConsumerState<PhotoUploadPage> {
             jsonEncode([userId, query.coupleId, query.tripId, photo.assetId]),
           ),
         );
-        final pendingKey = 'pending_photo_upload:$digest';
-        final previous = prefs?.getString(pendingKey);
+        final pendingKey = '$_pendingPrefix$digest';
+        final previous = prefs?.getString(pendingKey)?.split(' ').first;
         final id = _uploadIds.putIfAbsent(
           pendingKey,
           () => previous ?? uuidV4(),
         );
         if (prefs != null &&
-            previous != id &&
-            !await prefs.setString(pendingKey, id)) {
+            !await prefs.setString(
+              pendingKey,
+              '$id ${DateTime.now().millisecondsSinceEpoch}',
+            )) {
           failed.add(photo);
           return;
         }

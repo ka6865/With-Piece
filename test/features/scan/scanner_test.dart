@@ -111,7 +111,7 @@ void main() {
   });
 
   test('삭제 대기 중에는 사진첩을 다시 읽지 않는다', () async {
-    store.blockForDeletion();
+    ScanStore.blockUser(store.userId);
     final library = FakeLibrary(const Ok((total: 0, located: <PhotoMeta>[])));
 
     final result = await Scanner(library, locator, store).scan(full: true);

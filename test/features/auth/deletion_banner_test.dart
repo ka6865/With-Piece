@@ -66,7 +66,7 @@ void main() {
   test('다른 기기의 삭제 취소를 조회하면 스캔 차단을 해제한다', () async {
     const userId = 'remote-cancel';
     final store = ScanStore(Directory.systemTemp, userId: userId);
-    addTearDown(store.allowAfterDeletionCanceled);
+    addTearDown(() => ScanStore.allowUserAfterDeletionCanceled(store.userId));
     DateTime? deletionDate = DateTime(2026, 12, 17);
     final repo = FakeAccountRepository()
       ..readDeletionDate = () async => Ok(deletionDate);
@@ -90,7 +90,7 @@ void main() {
   test('삭제 요청 전에 시작한 조회는 새 스캔 차단을 풀지 못한다', () async {
     const userId = 'stale-deletion-query';
     final store = ScanStore(Directory.systemTemp, userId: userId);
-    addTearDown(store.allowAfterDeletionCanceled);
+    addTearDown(() => ScanStore.allowUserAfterDeletionCanceled(store.userId));
     final response = Completer<Result<DateTime?>>();
     final repo = FakeAccountRepository()
       ..readDeletionDate = () => response.future;
@@ -102,7 +102,7 @@ void main() {
     );
 
     final pending = container.read(myDeletionDateProvider(userId).future);
-    store.blockForDeletion();
+    ScanStore.blockUser(store.userId);
     response.complete(const Ok(null));
     await pending;
     expect(store.isDeletionPending, isTrue);

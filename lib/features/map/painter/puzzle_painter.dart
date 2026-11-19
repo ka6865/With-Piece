@@ -209,7 +209,6 @@ class PuzzlePainter extends CustomPainter {
       oldDelegate.homeRegionIds != homeRegionIds ||
       oldDelegate.regionNames != regionNames ||
       oldDelegate.colorScheme != colorScheme ||
-      oldDelegate.onRegionTap != onRegionTap ||
       oldDelegate.showSea != showSea ||
       oldDelegate.compact != compact ||
       oldDelegate.bordersOnly != bordersOnly ||

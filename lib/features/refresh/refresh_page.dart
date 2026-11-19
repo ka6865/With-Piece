@@ -45,14 +45,14 @@ class _RefreshPageState extends ConsumerState<RefreshPage> {
 
   // 사는 곳을 저장하고 같은 흐름에서 커플 지도의 생활권으로 지정한다(설계 4.4)
   Future<void> _setHome(String regionId) async {
+    final container = ProviderScope.containerOf(context, listen: false);
     final saved = await ref
         .read(coupleRepositoryProvider)
         .setHomeRegion(regionId);
-    if (!mounted) return;
-    ref
+    container
       ..invalidate(currentCoupleProvider)
       ..invalidate(overridesProvider);
-    if (saved is Err) _toast('사는 곳을 저장하지 못했어요');
+    if (saved is Err && mounted) _toast('사는 곳을 저장하지 못했어요');
   }
 
   Future<void> _request(String? partnerName) async {

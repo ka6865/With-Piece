@@ -61,7 +61,7 @@ void main() {
     await store.write(ScanSnapshot({sokcho: 2}, DateTime(2026, 11, 1)));
     await other.write(ScanSnapshot({goseong: 3}, DateTime(2026, 11, 2)));
 
-    store.blockForDeletion();
+    ScanStore.blockUser(store.userId);
     await store.clearForDeletion();
 
     expect((await store.read()).days, isEmpty);
@@ -77,5 +77,20 @@ void main() {
 
     expect(await File('${dir.path}/photo_days.json').exists(), isFalse);
     expect(await File('${dir.path}/photo_days.json.tmp').exists(), isFalse);
+  });
+
+  test('이전 캐시를 지우지 못했으면 다음 호출에서 다시 지운다', () async {
+    final file = File('${dir.path}/photo_days.json')..createSync();
+    // 쓰기 권한을 빼 삭제를 실패시킨다
+    Process.runSync('chmod', ['555', dir.path]);
+    await expectLater(
+      ScanStore.removeLegacySharedCache(dir),
+      throwsA(isA<FileSystemException>()),
+    );
+    Process.runSync('chmod', ['755', dir.path]);
+
+    await ScanStore.removeLegacySharedCache(dir);
+
+    expect(file.existsSync(), isFalse);
   });
 }

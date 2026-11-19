@@ -12,7 +12,6 @@ import 'auth_state.dart';
 import 'login_page.dart';
 import '../scan/rescan.dart';
 import '../scan/scan_providers.dart';
-import '../scan/scan_store.dart';
 
 // 여러 로그인 방법을 한 계정에 묶는다. Kakao는 이메일이 없어 자동 연동되지 않는다(설계 10.2)
 class AccountLinksPage extends ConsumerStatefulWidget {
@@ -133,7 +132,14 @@ class _AccountLinksPageState extends ConsumerState<AccountLinksPage> {
                 style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
               onTap: () async {
-                if (!await _confirmDeletion(context)) return;
+                if (!await _confirmDeletion(context) || !context.mounted) {
+                  return;
+                }
+                // 요청 중 화면을 떠나도 상태를 갱신하도록 컨테이너를 미리 잡는다
+                final container = ProviderScope.containerOf(
+                  context,
+                  listen: false,
+                );
                 final deletingUserId = ref.read(sessionUserIdProvider);
                 final accountRepository = ref.read(accountRepositoryProvider);
                 final scanSync = ref.read(scanSyncProvider);
@@ -143,7 +149,6 @@ class _AccountLinksPageState extends ConsumerState<AccountLinksPage> {
                 final result = await accountRepository.requestDeletion();
                 if (result is Ok) {
                   if (deletingUserId != null) {
-                    ScanStore.blockUser(deletingUserId);
                     try {
                       await (await scanStoreFuture!).clearForDeletion();
                     } catch (_) {
@@ -156,18 +161,17 @@ class _AccountLinksPageState extends ConsumerState<AccountLinksPage> {
                     await scanSync.clearForUser(deletingUserId);
                   }
                 }
-                if (!mounted) return;
-                toastOnError(result);
                 if (result is Ok &&
                     deletingUserId != null &&
-                    ref.read(sessionUserIdProvider) == deletingUserId) {
-                  ref.invalidate(partnerDeletionDatesProvider(deletingUserId));
-                  ref
+                    container.read(sessionUserIdProvider) == deletingUserId) {
+                  container
+                    ..invalidate(partnerDeletionDatesProvider(deletingUserId))
                     ..invalidate(scanSnapshotProvider(deletingUserId))
                     ..invalidate(photoDaysSyncedProvider)
                     ..invalidate(myDeletionDateProvider(deletingUserId))
                     ..invalidate(currentCoupleProvider);
                 }
+                if (mounted) toastOnError(result);
               },
             ),
           ],

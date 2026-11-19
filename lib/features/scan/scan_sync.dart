@@ -17,8 +17,8 @@ class ScanSync {
   final PhotoDayRepository _repository;
   final SharedPreferences _prefs;
 
-  // 같은 스캔 결과를 같은 사귄 날 기준으로 이미 올렸으면 건너뛴다.
-  // 상대가 사귄 날을 바꾸거나 새 스캔이 쌓이면 키가 달라져 다시 맞춘다
+  // 같은 스캔을 같은 사귄 날 기준으로 이미 올렸으면 건너뛴다. 서버는 통째로
+  // 바꾸므로 같은 계정의 다른 기기가 덮어썼을 수 있어 새 스캔마다 다시 올린다
   Future<Result<void>> sync(
     ScanSnapshot snapshot,
     DateTime startedOn, {
@@ -35,6 +35,7 @@ class ScanSync {
             jsonEncode([
               coupleId,
               startedOn.toIso8601String(),
+              snapshot.scannedAt?.toIso8601String(),
               for (final entry
                   in days.entries.toList()..sort((a, b) {
                     final date = a.key.day.compareTo(b.key.day);
