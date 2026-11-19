@@ -6,7 +6,11 @@ import '../../core/result/result.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../data/repositories/repository_providers.dart';
 import '../auth/auth_state.dart';
+import '../scan/home_regions.dart';
 import '../scan/rescan.dart';
+import '../scan/scan_providers.dart';
+import '../scan/sharing_groups.dart';
+import '../trip/region_picker.dart';
 import 'refresh_providers.dart';
 
 // 여행 최신화 탭. 함께 간 곳은 두 사람이 모두 고른 기록에서만 찾아지므로, 내 최신화와
@@ -38,6 +42,22 @@ class _RefreshPageState extends ConsumerState<RefreshPage> {
       case Err(:final error):
         _toast(rescanFailureMessage(error));
     }
+  }
+
+  // 사는 곳을 저장하고 같은 흐름에서 커플 지도의 생활권으로 지정한다(설계 4.4)
+  Future<void> _setHome(String coupleId, String regionId) async {
+    final saved = await ref
+        .read(coupleRepositoryProvider)
+        .setHomeRegion(regionId);
+    if (saved is Ok) {
+      await ref
+          .read(tripRepositoryProvider)
+          .setOverride(coupleId, regionId, OverrideKind.home);
+    }
+    ref
+      ..invalidate(currentCoupleProvider)
+      ..invalidate(overridesProvider);
+    if (saved is Err && mounted) _toast('사는 곳을 저장하지 못했어요');
   }
 
   Future<void> _request(String? partnerName) async {
@@ -105,6 +125,11 @@ class _RefreshPageState extends ConsumerState<RefreshPage> {
               ),
             ),
           ),
+          if (couple != null)
+            _HomeRegionCard(
+              homeRegionId: couple.myHomeRegionId,
+              onPick: (id) => _setHome(couple.id, id),
+            ),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -137,6 +162,66 @@ class _RefreshPageState extends ConsumerState<RefreshPage> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// 비교할 기록 목록에서 매일 찍히는 동네를 접으려고 사는 곳을 정한다. 아직 안 골랐으면
+// 기기의 사진 기록에서 서로 다른 날이 가장 많은 조각을 추천한다(기기 밖으로 나가지 않음)
+class _HomeRegionCard extends ConsumerWidget {
+  const _HomeRegionCard({required this.homeRegionId, required this.onPick});
+
+  final String? homeRegionId;
+  final ValueChanged<String> onPick;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final names = ref.watch(regionNamesProvider).value ?? const {};
+    final suggested = homeRegionId == null
+        ? suggestHomeRegion(ref.watch(scanSnapshotProvider).value?.days ?? {})
+        : null;
+    Future<void> pickOther() async {
+      final id = await pickRegion(context, title: '내가 사는 곳');
+      if (id != null) onPick(id);
+    }
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('내가 사는 곳', style: theme.textTheme.titleMedium),
+            const SizedBox(height: 4),
+            Text(
+              homeRegionId != null
+                  ? '${names[homeRegionId] ?? homeRegionId} · 비교할 기록 맨 아래에 접어 둬요'
+                  : suggested != null
+                  ? '${names[suggested] ?? suggested}에서 사진을 가장 많이 찍었어요. 사는 곳으로 정할까요?'
+                  : '사는 곳을 정하면 비교할 기록 맨 아래에 접어 둬요',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: pickOther,
+                  child: Text(homeRegionId == null ? '직접 고르기' : '바꾸기'),
+                ),
+                if (suggested != null)
+                  FilledButton.tonal(
+                    onPressed: () => onPick(suggested),
+                    child: const Text('정하기'),
+                  ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -12,10 +12,19 @@ Future<Set<String>?> pickRegions(
   builder: (_) => _RegionPicker(initial: initial),
 );
 
+// 조각 하나를 고른다. 누르는 즉시 닫힌다
+Future<String?> pickRegion(BuildContext context, {required String title}) =>
+    showDialog<Set<String>>(
+      context: context,
+      builder: (_) => _RegionPicker(initial: const {}, single: title),
+    ).then((picked) => picked?.firstOrNull);
+
 class _RegionPicker extends ConsumerStatefulWidget {
-  const _RegionPicker({required this.initial});
+  const _RegionPicker({required this.initial, this.single});
 
   final Set<String> initial;
+  // 하나만 고를 때의 제목. 있으면 체크 대신 누르는 즉시 돌려준다
+  final String? single;
 
   @override
   ConsumerState<_RegionPicker> createState() => _RegionPickerState();
@@ -34,7 +43,7 @@ class _RegionPickerState extends ConsumerState<_RegionPicker> {
     }
     final provinceId = _provinceId ?? provinces.features.first.id;
     return AlertDialog(
-      title: const Text('조각 추가'),
+      title: Text(widget.single ?? '조각 추가'),
       content: SizedBox(
         width: double.maxFinite,
         child: Column(
@@ -56,14 +65,21 @@ class _RegionPickerState extends ConsumerState<_RegionPicker> {
                   for (final r in regions.features.where(
                     (f) => f.parentId == provinceId,
                   ))
-                    CheckboxListTile(
-                      title: Text(r.name),
-                      value: _selected.contains(r.id),
-                      onChanged: (on) => setState(
-                        () =>
-                            on! ? _selected.add(r.id) : _selected.remove(r.id),
+                    if (widget.single != null)
+                      ListTile(
+                        title: Text(r.name),
+                        onTap: () => Navigator.pop(context, {r.id}),
+                      )
+                    else
+                      CheckboxListTile(
+                        title: Text(r.name),
+                        value: _selected.contains(r.id),
+                        onChanged: (on) => setState(
+                          () => on!
+                              ? _selected.add(r.id)
+                              : _selected.remove(r.id),
+                        ),
                       ),
-                    ),
                 ],
               ),
             ),
@@ -75,10 +91,11 @@ class _RegionPickerState extends ConsumerState<_RegionPicker> {
           onPressed: () => Navigator.pop(context),
           child: const Text('취소'),
         ),
-        FilledButton(
-          onPressed: () => Navigator.pop(context, _selected),
-          child: const Text('완료'),
-        ),
+        if (widget.single == null)
+          FilledButton(
+            onPressed: () => Navigator.pop(context, _selected),
+            child: const Text('완료'),
+          ),
       ],
     );
   }
