@@ -157,6 +157,42 @@ void main() {
     container.dispose();
   });
 
+  testWidgets('확인하면 새로 채운 조각 수를 알린다', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          tripCandidatesProvider.overrideWith(
+            (ref) async => [
+              candidate(3, 4, ['32060', '32400'], '속초시 고성군 1박 2일'),
+            ],
+          ),
+          tripRepositoryProvider.overrideWithValue(FakeTripRepository()),
+          regionMapAssetProvider.overrideWith((ref) => regions),
+          tripsProvider.overrideWith((ref) async => const []),
+          // 속초는 생활권이라 이미 채워져 있다
+          homeRegionIdsProvider.overrideWith((ref) async => {'32060'}),
+          localPhotosInRangeProvider.overrideWith((ref, _) async => const []),
+        ],
+        // 실제 앱에서는 홈이 두 값을 지켜보고 있다
+        child: MaterialApp(
+          home: Consumer(
+            builder: (context, ref, _) {
+              ref.watch(tripsProvider);
+              ref.watch(homeRegionIdsProvider);
+              return const TripCandidatesPage();
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('확인'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('지도에 채우기'));
+    await tester.pump();
+    expect(find.text('우리의 조각이 1개 늘었어요'), findsOneWidget);
+  });
+
   testWidgets('조각을 빼고 확인하면 바뀐 조각으로 확인된다', (tester) async {
     final trips = await pumpPage(tester, [
       candidate(3, 4, ['32060', '32400'], '속초시 고성군 1박 2일'),

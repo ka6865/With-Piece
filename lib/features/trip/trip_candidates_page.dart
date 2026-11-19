@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/result/result.dart';
 import '../../data/repositories/repository_providers.dart';
 import '../../data/repositories/trip_repository.dart';
+import '../scan/progress.dart';
 import '../scan/scan_providers.dart';
 import '../scan/trip_candidates.dart';
 import '../auth/auth_state.dart';
@@ -153,6 +154,7 @@ class _TripCandidatesPageState extends ConsumerState<TripCandidatesPage> {
       _toast('이 여행 후보가 최신 기록에서 사라져 확인하지 않았어요');
       return;
     }
+    final filledBefore = filledRegionIdsNow(ref);
     final result = await ref
         .read(tripRepositoryProvider)
         .confirm(
@@ -167,6 +169,7 @@ class _TripCandidatesPageState extends ConsumerState<TripCandidatesPage> {
     switch (result) {
       case Ok(value: final tripId):
         _done(entry);
+        _toast(confirmedTripMessage(filledBefore, confirmation.regionIds));
         await _pickPhotos(
           tripId,
           candidate.range,
