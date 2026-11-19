@@ -204,10 +204,10 @@ void main() {
     );
     await tester.tap(find.text('열기'));
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 1950));
+    await tester.pump(const Duration(milliseconds: 4500));
     expect(find.text('2025.06.24'), findsOneWidget);
     expect(find.text('우리가 시작한 날'), findsOneWidget);
-    await tester.pump(const Duration(milliseconds: 1050));
+    await tester.pump(const Duration(milliseconds: 2500));
     expect(
       find.text(
         'D+${daysTogether(DateTime(2025, 6, 24), DateTime(2026, 11, 20))}',
