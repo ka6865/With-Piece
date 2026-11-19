@@ -9,6 +9,7 @@ import '../../core/supabase/supabase_providers.dart';
 import '../../data/repositories/photo_repository.dart';
 import '../../data/repositories/region_cover_repository.dart';
 import '../../data/repositories/repository_providers.dart';
+import '../../data/repositories/trip_repository.dart';
 import '../album/album_providers.dart';
 import '../auth/auth_state.dart';
 
@@ -23,8 +24,9 @@ final regionCoversProvider = FutureProvider<Map<String, RegionCover>>((
       .valueOrThrow;
 });
 
-// 조각마다 보일 사진과 구도. 고른 사진이 있으면 그것, 없거나 지워졌으면 그 조각에서
-// 가장 늦게 찍은 사진을 가운데 구도로 쓴다(설계 4.3 자동 대표). 사진이 없는 조각은 빠진다
+// 조각마다 보일 사진과 구도. 고른 사진이 있으면 그것(같은 여행의 다른 조각 사진일 수
+// 있다), 없거나 지워졌으면 그 조각에서 가장 늦게 찍은 사진을 가운데 구도로 쓴다
+// (설계 4.3 자동 대표). 고른 것도 그 조각 사진도 없는 조각은 빠진다
 Map<String, (PhotoRecord, RegionCover)> effectiveCovers(
   Map<String, RegionCover> saved,
   Iterable<PhotoRecord> photos,
@@ -39,14 +41,35 @@ Map<String, (PhotoRecord, RegionCover)> effectiveCovers(
   }
   return {
     for (final MapEntry(key: region, value: auto) in latest.entries)
-      region: switch (byId[saved[region]?.photoId]) {
-        final chosen? when chosen.regionId == region => (
-          chosen,
-          saved[region]!,
-        ),
-        _ => (auto, RegionCover(regionId: region, photoId: auto.id)),
-      },
+      region: (auto, RegionCover(regionId: region, photoId: auto.id)),
+    // 서버가 그 조각 또는 그 조각이 든 여행의 사진만 받는다
+    for (final MapEntry(key: region, value: cover) in saved.entries)
+      if (byId[cover.photoId] case final chosen?) region: (chosen, cover),
   };
+}
+
+// 대표 사진 후보: 그 조각에서 찍은 사진과 그 조각이 들어간 여행의 사진, 촬영 순
+// (2026-11-20 사용자 결정: 가평 사진이 없는 춘천·가평 여행이면 춘천 사진도 고른다)
+List<PhotoRecord> coverCandidates(
+  Iterable<PhotoRecord> photos,
+  Iterable<Trip> trips,
+  String regionId,
+) {
+  final tripIds = {
+    for (final t in trips)
+      if (t.regionIds.contains(regionId)) t.id,
+  };
+  final list = [
+    ...photos.where(
+      (p) => p.regionId == regionId || tripIds.contains(p.tripId),
+    ),
+  ];
+  list.sort((a, b) {
+    final at = a.takenAt, bt = b.takenAt;
+    if (at == null || bt == null) return at == null ? (bt == null ? 0 : 1) : -1;
+    return at.compareTo(bt);
+  });
+  return list;
 }
 
 // 촬영 시각이 없는 사진은 있는 사진보다 뒤로 미룬다. 같으면 id로 정해 두 기기가 같다

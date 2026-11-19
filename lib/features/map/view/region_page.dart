@@ -55,19 +55,19 @@ class RegionPage extends ConsumerWidget {
                 .value
                 ?.contains(regionId) ??
             false);
-    final photos = _regionPhotos(
-      (scope == null
-              ? null
-              : ref.watch(scopedCouplePhotosProvider(scope)).value) ??
-          const [],
-      regionId,
-    );
+    final allPhotos =
+        (scope == null
+            ? null
+            : ref.watch(scopedCouplePhotosProvider(scope)).value) ??
+        const <PhotoRecord>[];
+    final photos = _regionPhotos(allPhotos, regionId);
+    final candidates = coverCandidates(allPhotos, trips, regionId);
     return Scaffold(
       appBar: AppBar(title: Text(names[regionId] ?? regionId)),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          if (photos.isNotEmpty)
+          if (candidates.isNotEmpty)
             FilledButton.tonalIcon(
               onPressed: () => context.push('/regions/$regionId/cover'),
               icon: const Icon(Icons.photo_outlined),
@@ -109,10 +109,12 @@ class CoverPickerPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final scope = ref.watch(currentCoupleScopeProvider);
-    final photos = _regionPhotos(
+    final photos = coverCandidates(
       (scope == null
               ? null
               : ref.watch(scopedCouplePhotosProvider(scope)).value) ??
+          const [],
+      (scope == null ? null : ref.watch(scopedTripsProvider(scope)).value) ??
           const [],
       regionId,
     );
