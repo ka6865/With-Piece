@@ -1,5 +1,5 @@
 begin;
-select plan(14);
+select plan(17);
 
 insert into auth.users (id) values
   ('00000000-0000-0000-0000-0000000000a1'), ('00000000-0000-0000-0000-0000000000b1'),
@@ -37,6 +37,11 @@ select throws_ok($$ insert into photos (trip_id, couple_id, object_key, width, h
   values ('30000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001',
   '10000000-0000-0000-0000-000000000001/30000000-0000-0000-0000-000000000001/forged.heic', 1, 1, 1,
   '00000000-0000-0000-0000-0000000000b1') $$, '42501', null, '사진 업로더를 위조하지 못한다');
+select is((select created_by from trips where title = '속초'), null::uuid, '기존 작성자 정보는 기본값을 유지한다');
+select lives_ok($$ insert into couple_region_overrides (couple_id, region_id, kind)
+  values ('10000000-0000-0000-0000-000000000001', '32060', 'home') $$, '공동 생활권을 기록한다');
+select is((select updated_by from couple_region_overrides where region_id = '32060'),
+  '00000000-0000-0000-0000-0000000000a1'::uuid, '직접 기록해도 서버가 작성자를 설정한다');
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000d1","role":"authenticated"}', true);
 select throws_ok('select * from create_invite()', 'P0001', 'deletion_pending', '삭제 유예 중 초대를 만들지 못한다');
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000c1","role":"authenticated"}', true);

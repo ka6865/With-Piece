@@ -86,7 +86,16 @@ Future<Map<String, Object>> _measure() async {
 
   const encoder = HeicEncoder();
   final storage = client.storage.from('photos');
-  final folder = '$coupleId/benchmark-${uuidV4()}';
+  final trip = await client
+      .from('trips')
+      .select('id')
+      .eq('couple_id', coupleId)
+      .eq('status', 'confirmed')
+      .limit(1)
+      .maybeSingle();
+  if (trip == null) return {'error': 'noConfirmedTrip'};
+  final folder = '$coupleId/${trip['id']}';
+  const heicOptions = FileOptions(contentType: 'image/heic');
 
   // 단계별 시간(한 장씩 차례로)
   final localBefore = <bool>[];
@@ -129,8 +138,8 @@ Future<Map<String, Object>> _measure() async {
     uploadMs.add(
       await _time(
         () => Future.wait([
-          storage.uploadBinary(paths[0], full),
-          storage.uploadBinary(paths[1], thumb),
+          storage.uploadBinary(paths[0], full, fileOptions: heicOptions),
+          storage.uploadBinary(paths[1], thumb, fileOptions: heicOptions),
         ]),
       ),
     );
@@ -180,8 +189,8 @@ Future<Map<String, Object>> _measure() async {
       final id = uuidV4();
       final paths = ['$folder/full/c$id.heic', '$folder/thumb/c$id.heic'];
       await Future.wait([
-        storage.uploadBinary(paths[0], full),
-        storage.uploadBinary(paths[1], thumb),
+        storage.uploadBinary(paths[0], full, fileOptions: heicOptions),
+        storage.uploadBinary(paths[1], thumb, fileOptions: heicOptions),
       ]);
       uploaded.addAll(paths);
     }

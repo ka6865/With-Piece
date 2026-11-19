@@ -14,9 +14,10 @@ import 'package:woori_piece/features/scan/trip_candidates.dart';
 import 'support.dart';
 
 class FakeEncoder implements ImageEncoder {
-  FakeEncoder({this.heicSupported = true});
+  FakeEncoder({this.heicSupported = true, this.thumbnailHasGps = false});
 
   final bool heicSupported;
+  final bool thumbnailHasGps;
   final formats = <ImageFormat>[];
 
   @override
@@ -34,8 +35,11 @@ class FakeEncoder implements ImageEncoder {
   }
 
   @override
-  Future<HeicInfo> inspect(Uint8List image) async =>
-      const HeicInfo(width: 2048, height: 1536, hasGps: false);
+  Future<HeicInfo> inspect(Uint8List image) async => HeicInfo(
+    width: 2048,
+    height: 1536,
+    hasGps: thumbnailHasGps && image.length == 10,
+  );
 }
 
 Future<(SupabaseClient, String, String)> coupleWithTrip() async {
@@ -140,6 +144,31 @@ Future<List<String>> objectsUnder(SupabaseClient client, String prefix) async =>
 Future<void> main() async {
   final skip = await localStackSkipReason();
   final original = Uint8List.fromList([1, 2, 3]);
+
+  test('GPS가 남은 썸네일은 저장소에 보내지 않는다', () async {
+    final transport = LoseFirstCommitResponseClient();
+    final client = SupabaseClient(
+      'http://localhost:54321',
+      'test',
+      httpClient: transport,
+      postgrestOptions: const PostgrestClientOptions(retryEnabled: false),
+    );
+    addTearDown(client.dispose);
+    final result =
+        await PhotoRepository(
+          client,
+          FakeEncoder(thumbnailHasGps: true),
+        ).upload(
+          coupleId: 'couple',
+          tripId: 'trip',
+          regionId: null,
+          takenAt: null,
+          original: original,
+        );
+    expect(result, isA<Err<String>>());
+    expect(transport.objects, isEmpty);
+    expect(transport.rows, isEmpty);
+  });
 
   test('상세·썸네일을 올리고 photos 행을 넣는다', () async {
     final (client, coupleId, tripId) = await coupleWithTrip();

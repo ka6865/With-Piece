@@ -1,5 +1,5 @@
 begin;
-select plan(11);
+select plan(12);
 
 -- a·b 커플, c·d 다른 커플. 속초(32060) 사진 하나, 경주(37020) 사진 하나, 다른 커플 속초 사진 하나
 insert into auth.users (id) values
@@ -44,7 +44,7 @@ select lives_ok($$ insert into region_covers (couple_id, region_id, photo_id, sc
 select is((select count(*)::int from region_covers where region_id = '31370'), 1, '같은 여행 사진으로 정한 행이 있다');
 select throws_ok($$ update region_covers set photo_id = '40000000-0000-0000-0000-000000000003'
   where region_id = '32060' $$,
-  '23503', null, '다른 커플 사진은 대표 사진이 되지 못한다');
+  '42501', null, '다른 커플 사진은 대표 사진이 되지 못한다');
 select throws_ok($$ insert into region_covers (couple_id, region_id, photo_id, scale, center_x, center_y)
   values ('10000000-0000-0000-0000-000000000001', '37020', '40000000-0000-0000-0000-000000000002', 0.5, 0.5, 0.5) $$,
   '23514', null, '조각을 다 덮지 못하는 배율은 거부한다');
@@ -58,10 +58,17 @@ select ok((select scale = 2 and updated_by = '00000000-0000-0000-0000-0000000000
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000c1","role":"authenticated"}', true);
 select is((select count(*)::int from region_covers), 0, '다른 커플의 대표 사진은 읽지 못한다');
 
--- 사진을 지우면 대표 사진 행도 지워져 자동 대표로 돌아간다
+-- 여행에서 조각을 빼면 다른 조각에서 찍은 대표 사진을 해제한다.
 reset role;
+delete from trip_regions where trip_id = '30000000-0000-0000-0000-000000000001' and region_id = '31370';
+select is((select count(*)::int from region_covers
+  where couple_id = '10000000-0000-0000-0000-000000000001' and region_id = '31370'),
+  0, '여행에서 조각을 빼면 다른 조각 사진은 대표에서 해제된다');
+
+-- 사진을 지우면 대표 사진 행도 지워져 자동 대표로 돌아간다
 delete from photos where id = '40000000-0000-0000-0000-000000000001';
-select is((select count(*)::int from region_covers where region_id = '32060'), 0, '사진을 지우면 대표 사진 행도 지워진다');
+select is((select count(*)::int from region_covers
+  where couple_id = '10000000-0000-0000-0000-000000000001' and region_id = '32060'), 0, '사진을 지우면 대표 사진 행도 지워진다');
 select has_table('public', 'region_covers', '테이블이 있다');
 
 select * from finish();

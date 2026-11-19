@@ -27,7 +27,6 @@ final partnerCommentTimesProvider = FutureProvider.autoDispose
       final repository = ref.watch(commentRepositoryProvider);
       return (await repository.partnerLatestByTrip(
         scope.coupleId,
-        scope.userId,
       )).valueOrThrow;
     });
 

@@ -1,5 +1,5 @@
 begin;
-select plan(21);
+select plan(23);
 
 -- A·B 커플, B는 photo_days를 가진다. C는 31일 전에 삭제를 요청한 사용자
 insert into auth.users (id) values
@@ -21,6 +21,10 @@ select lives_ok('select request_account_deletion()', 'A가 삭제를 요청한�
 reset role;
 select isnt((select deletion_requested_at from users where id = '00000000-0000-0000-0000-0000000000a1'), null, '요청 시각이 남는다');
 select is((select status from couples where id = '10000000-0000-0000-0000-000000000001'), 'archived', '커플이 아카이브된다');
+select ok(exists (
+  select 1 from realtime.messages where topic = 'user:00000000-0000-0000-0000-0000000000b1'
+    and event = 'archive' and private and payload - 'id' = '{}'::jsonb
+), '상대의 비공개 채널에 삭제 상태 갱신 신호만 보낸다');
 select is((select count(*)::int from users where active_couple_id is not null
   and id in ('00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000000b1')), 0, '두 사람 모두 활성 커플이 없다');
 select is((select count(*)::int from photo_days where user_id = '00000000-0000-0000-0000-0000000000a1'), 0, 'A의 위치 기록은 바로 지운다');
@@ -48,12 +52,23 @@ insert into photos (id, trip_id, couple_id, object_key, width, height, byte_size
   ('40000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001',
    '10000000-0000-0000-0000-000000000001/30000000-0000-0000-0000-000000000001/p.heic', 1, 1, 1,
    '00000000-0000-0000-0000-0000000000b1');
+-- 정리 목록은 사진 행과 관계없이 그 커플의 실제 저장소 객체로 만든다.
+insert into storage.objects (bucket_id, name) values
+  ('photos', '10000000-0000-0000-0000-000000000001/30000000-0000-0000-0000-000000000001/full/p.heic'),
+  ('photos', '10000000-0000-0000-0000-000000000001/30000000-0000-0000-0000-000000000001/thumb/p.heic'),
+  ('photos', '10000000-0000-0000-0000-000000000001/30000000-0000-0000-0000-000000000001/thumb/unregistered.heic');
 select results_eq(
   'select user_id::text, object_paths from purge_expired_users()',
   $$ values ('00000000-0000-0000-0000-0000000000a1'::text, array[
     '10000000-0000-0000-0000-000000000001/30000000-0000-0000-0000-000000000001/full/p.heic',
-    '10000000-0000-0000-0000-000000000001/30000000-0000-0000-0000-000000000001/thumb/p.heic']) $$,
-  '30일 지난 사용자만, 그가 속한 커플의 사진(상대 사진 포함) 경로를 돌려준다');
+    '10000000-0000-0000-0000-000000000001/30000000-0000-0000-0000-000000000001/thumb/p.heic',
+    '10000000-0000-0000-0000-000000000001/30000000-0000-0000-0000-000000000001/thumb/unregistered.heic']) $$,
+  '30일 지난 사용자만, 저장소에 있는 상대 사진과 미등록 사진의 경로를 돌려준다');
+select ok((
+  select public = false and file_size_limit = 10485760
+    and allowed_mime_types = array['image/heic', 'image/jpeg']
+  from storage.buckets where id = 'photos'
+), '비공개 사진 버킷은 허용 형식과 파일 크기를 제한한다');
 select is((select deletion_started_at is not null from users where id = '00000000-0000-0000-0000-0000000000a1'), true, '정리 시작 표식이 기록된다');
 select is((select count(*)::int from couples where id = '10000000-0000-0000-0000-000000000001'), 1, 'Storage 삭제 전 커플 메타데이터가 보존된다');
 select lives_ok($$ select finalize_expired_user('00000000-0000-0000-0000-0000000000a1') $$, '파일 삭제 후 DB 정리를 완료한다');

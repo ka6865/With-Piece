@@ -77,10 +77,7 @@ Future<void> main() async {
     );
 
     // a가 보기에 상대(b)의 최신 댓글은 사진 댓글을 거쳐 그 여행에 묶인다
-    final latest = (await ca.partnerLatestByTrip(
-      coupleId,
-      a.auth.currentUser!.id,
-    )).valueOrThrow;
+    final latest = (await ca.partnerLatestByTrip(coupleId)).valueOrThrow;
     expect(latest.keys, [tripId]);
 
     final photoComment = (await cb.list(
