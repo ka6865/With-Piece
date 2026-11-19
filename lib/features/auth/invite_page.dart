@@ -75,6 +75,7 @@ class _InvitePageState extends ConsumerState<InvitePage> {
     final invite = userId == null
         ? const AsyncLoading<Invite?>()
         : ref.watch(myInviteProvider(userId));
+    final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
         title: const Text('연인과 연결하기'),
@@ -94,44 +95,74 @@ class _InvitePageState extends ConsumerState<InvitePage> {
         children: [
           const DeletionBanners(),
           const SoloPreview(),
-          const SizedBox(height: 24),
-          Text('내 초대 코드', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
-          switch (invite) {
-            AsyncData(value: final Invite invite) => Row(
-              children: [
-                Expanded(
-                  child: SelectableText(
-                    invite.code,
-                    style: Theme.of(context).textTheme.headlineSmall,
-                  ),
-                ),
-                IconButton(
-                  tooltip: '복사',
-                  icon: const Icon(Icons.copy),
-                  onPressed: () =>
-                      Clipboard.setData(ClipboardData(text: invite.code)),
-                ),
-              ],
+          const SizedBox(height: 16),
+          const _MeetingPieces(),
+          const SizedBox(height: 16),
+          // 두 사람이 각자 하는 일을 카드 둘로 나눈다. 내 코드를 보내거나, 받은 코드를 넣는다
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text('내 초대 코드', style: theme.textTheme.titleMedium),
+                  const SizedBox(height: 12),
+                  switch (invite) {
+                    AsyncData(value: final Invite invite) => Row(
+                      children: [
+                        Expanded(
+                          child: SelectableText(
+                            invite.code,
+                            style: theme.textTheme.headlineSmall?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 2,
+                              color: theme.colorScheme.primary,
+                            ),
+                          ),
+                        ),
+                        IconButton.filledTonal(
+                          tooltip: '복사',
+                          icon: const Icon(Icons.copy),
+                          onPressed: () => Clipboard.setData(
+                            ClipboardData(text: invite.code),
+                          ),
+                        ),
+                      ],
+                    ),
+                    AsyncData() => OutlinedButton(
+                      onPressed: _createInvite,
+                      child: const Text('초대 코드 만들기'),
+                    ),
+                    AsyncError() => const Text('초대 코드를 불러오지 못했어요'),
+                    _ => const LinearProgressIndicator(),
+                  },
+                ],
+              ),
             ),
-            AsyncData() => OutlinedButton(
-              onPressed: _createInvite,
-              child: const Text('초대 코드 만들기'),
-            ),
-            AsyncError() => const Text('초대 코드를 불러오지 못했어요'),
-            _ => const LinearProgressIndicator(),
-          },
-          const SizedBox(height: 32),
-          Text('받은 코드 입력', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _code,
-            textCapitalization: TextCapitalization.none,
-            autocorrect: false,
-            decoration: const InputDecoration(border: OutlineInputBorder()),
           ),
           const SizedBox(height: 12),
-          FilledButton(onPressed: _join, child: const Text('연결하기')),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text('받은 코드 입력', style: theme.textTheme.titleMedium),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _code,
+                    textCapitalization: TextCapitalization.none,
+                    autocorrect: false,
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  FilledButton(onPressed: _join, child: const Text('연결하기')),
+                ],
+              ),
+            ),
+          ),
           const SizedBox(height: 32),
           ListTile(
             title: const Text('지난 기록'),
@@ -142,6 +173,36 @@ class _InvitePageState extends ConsumerState<InvitePage> {
           const Text(
             '이미 연인과 연결했다면 다른 방법으로 로그인했을 수 있어요. '
             '로그아웃한 뒤 처음에 썼던 방법으로 다시 로그인해 보세요.',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// 두 조각이 서로를 향해 맞물리려는 모습. 연결 전이라 아직 떨어져 있다(커플 디자인 4.6)
+class _MeetingPieces extends StatelessWidget {
+  const _MeetingPieces();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return ExcludeSemantics(
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Transform.rotate(
+            angle: -0.2,
+            child: Icon(Icons.extension, size: 56, color: scheme.secondary),
+          ),
+          const SizedBox(width: 8),
+          Transform.rotate(
+            angle: 0.2,
+            child: Icon(
+              Icons.extension_outlined,
+              size: 56,
+              color: scheme.tertiary,
+            ),
           ),
         ],
       ),

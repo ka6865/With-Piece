@@ -183,6 +183,11 @@ void main() {
   testWidgets('커플이 없는 화면은 다른 로그인 방법을 안내하고 로그아웃할 수 있다', (tester) async {
     final auth = FakeAuthRepository();
     await pumpApp(tester, stage: AppStage.needsCouple, auth: auth);
+    await tester.scrollUntilVisible(
+      find.textContaining('다른 방법으로 로그인했을 수 있어요'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.textContaining('다른 방법으로 로그인했을 수 있어요'), findsOneWidget);
     await tester.tap(find.text('로그아웃'));
     await tester.pump();

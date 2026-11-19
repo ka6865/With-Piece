@@ -15,6 +15,7 @@ import '../scan/scan_providers.dart';
 import '../trip/trip_candidates_page.dart';
 import '../trip/trip_discovery_banner.dart';
 import 'couple_days.dart';
+import 'rewind_page.dart';
 
 // 커플 상태의 첫 화면. 두 사람과 함께한 날, 채운 조각, 최근 여행을 모아 본다
 // (커플 디자인 4.2)
@@ -40,6 +41,16 @@ class HomePage extends ConsumerWidget {
           padding: const EdgeInsets.symmetric(vertical: 16),
           children: [
             if (couple != null) _Header(couple: couple),
+            if ((scope, couple?.startedOn) case (
+              final scope?,
+              final startedOn?,
+            ))
+              RewindGate(
+                key: ValueKey(scope),
+                userId: scope.userId,
+                coupleId: scope.coupleId,
+                startedOn: startedOn,
+              ),
             if (scope != null)
               const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
