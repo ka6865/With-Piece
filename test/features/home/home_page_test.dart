@@ -3,16 +3,19 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:woori_piece/app/app.dart';
 import 'package:woori_piece/app/router.dart';
 import 'package:woori_piece/core/supabase/supabase_providers.dart';
 import 'package:woori_piece/data/repositories/couple_repository.dart';
 import 'package:woori_piece/data/repositories/photo_repository.dart';
+import 'package:woori_piece/data/repositories/repository_providers.dart';
 import 'package:woori_piece/data/repositories/signed_url_cache.dart';
 import 'package:woori_piece/data/repositories/trip_repository.dart';
 import 'package:woori_piece/features/album/album_providers.dart';
 import 'package:woori_piece/features/auth/auth_state.dart';
 import 'package:woori_piece/features/home/couple_days.dart';
+import 'package:woori_piece/features/home/rewind_page.dart';
 import 'package:woori_piece/features/map/view/mini_puzzle_map.dart';
 import 'package:woori_piece/features/scan/realtime_sync.dart';
 import 'package:woori_piece/features/scan/scan_providers.dart';
@@ -55,11 +58,18 @@ Future<void> pumpApp(
   String location = '/',
   List<Trip> trips = const [],
   List<TripCandidate> candidates = const [],
+  bool rewindSeen = true,
+  bool settle = true,
 }) async {
+  SharedPreferences.setMockInitialValues({
+    if (rewindSeen) RewindGate.seenKey('me', 'c1'): true,
+  });
+  final prefs = await SharedPreferences.getInstance();
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         realtimeSyncProvider.overrideWith((ref) {}),
+        sharedPreferencesProvider.overrideWithValue(prefs),
         appStageProvider.overrideWithValue(stage),
         initialLocationProvider.overrideWithValue(location),
         provinceMapAssetProvider.overrideWith((ref) => provinces),
@@ -89,7 +99,7 @@ Future<void> pumpApp(
       child: const WooriPieceApp(),
     ),
   );
-  await tester.pumpAndSettle();
+  if (settle) await tester.pumpAndSettle();
 }
 
 void main() {
@@ -155,5 +165,75 @@ void main() {
     await tester.tap(find.text('지도'));
     await tester.pumpAndSettle();
     expect(find.text('우리들의 조각'), findsOneWidget);
+  });
+
+  testWidgets('처음 홈에 들어오면 사귄 날로 되감은 뒤 홈으로 돌아온다', (tester) async {
+    await pumpApp(tester, rewindSeen: false, settle: false);
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(find.byType(RewindPage), findsOneWidget);
+    await tester.pumpAndSettle();
+    expect(find.byType(RewindPage), findsNothing);
+    expect(find.text('우리의 조각'), findsOneWidget);
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getBool(RewindGate.seenKey('me', 'c1')), isTrue);
+  });
+
+  testWidgets('되감기 중간에 사귄 날에 멈추고 건너뛸 수 있다', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => TextButton(
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => RewindPage(
+                  startedOn: DateTime(2025, 6, 24),
+                  today: DateTime(2026, 11, 20),
+                ),
+              ),
+            ),
+            child: const Text('열기'),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('열기'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1950));
+    expect(find.text('2025.06.24'), findsOneWidget);
+    expect(find.text('우리가 시작한 날'), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 1050));
+    expect(
+      find.text(
+        'D+${daysTogether(DateTime(2025, 6, 24), DateTime(2026, 11, 20))}',
+      ),
+      findsOneWidget,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('열기'), findsOneWidget);
+    await tester.tap(find.text('열기'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('건너뛰기'));
+    await tester.pumpAndSettle();
+    expect(find.byType(RewindPage), findsNothing);
+  });
+
+  testWidgets('동작 줄이기를 켜면 되감지 않고 본 것으로 남긴다', (tester) async {
+    tester.platformDispatcher.accessibilityFeaturesTestValue =
+        const FakeAccessibilityFeatures(disableAnimations: true);
+    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+    await pumpApp(tester, rewindSeen: false);
+    expect(find.byType(RewindPage), findsNothing);
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getBool(RewindGate.seenKey('me', 'c1')), isTrue);
+  });
+
+  testWidgets('이미 본 사람에게는 되감기를 다시 보이지 않는다', (tester) async {
+    await pumpApp(tester);
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.byType(RewindPage), findsNothing);
   });
 }
