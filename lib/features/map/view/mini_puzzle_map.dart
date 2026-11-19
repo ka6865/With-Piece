@@ -68,7 +68,7 @@ class _MiniPuzzleMapState extends State<MiniPuzzleMap>
       return cached;
     }
     _layoutAsset = widget.asset;
-    return _layout = PuzzleLayout.build(asset: widget.asset, size: size);
+    return _layout = PuzzleLayout.cached(asset: widget.asset, size: size);
   }
 
   @override

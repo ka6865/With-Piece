@@ -240,7 +240,7 @@ class _CoverCropPageState extends ConsumerState<CoverCropPage> {
         final side = constraints.maxWidth - 48;
         final layout = shape == null
             ? null
-            : PuzzleLayout.build(asset: shape, size: Size(side, side));
+            : PuzzleLayout.cached(asset: shape, size: Size(side, side));
         final bounds = layout?.polygons
             .map((p) => p.bounds)
             .reduce((a, b) => a.expandToInclude(b));

@@ -21,6 +21,7 @@ class PuzzlePainter extends CustomPainter {
     this.compact = false,
     this.bordersOnly = false,
     this.covers = const {},
+    this.onRegionTap,
   });
 
   static const hatchGap = 6.0;
@@ -42,6 +43,7 @@ class PuzzlePainter extends CustomPainter {
   final bool bordersOnly;
   // 시도 화면에서 채운 조각을 면 색 대신 사진으로 채운다(조각채우기·최신화·대표사진 설계 4.3)
   final Map<String, CoverImage> covers;
+  final ValueChanged<String>? onRegionTap;
 
   static Path buildPath(ScaledPolygon polygon) {
     final path = Path()..fillType = PathFillType.evenOdd;
@@ -207,6 +209,7 @@ class PuzzlePainter extends CustomPainter {
       oldDelegate.homeRegionIds != homeRegionIds ||
       oldDelegate.regionNames != regionNames ||
       oldDelegate.colorScheme != colorScheme ||
+      oldDelegate.onRegionTap != onRegionTap ||
       oldDelegate.showSea != showSea ||
       oldDelegate.compact != compact ||
       oldDelegate.bordersOnly != bordersOnly ||
@@ -217,7 +220,8 @@ class PuzzlePainter extends CustomPainter {
       oldDelegate.layout != layout ||
       oldDelegate.visitedRegionIds != visitedRegionIds ||
       oldDelegate.homeRegionIds != homeRegionIds ||
-      oldDelegate.regionNames != regionNames;
+      oldDelegate.regionNames != regionNames ||
+      oldDelegate.onRegionTap != onRegionTap;
 
   @override
   SemanticsBuilderCallback get semanticsBuilder => (size) {
@@ -242,6 +246,7 @@ class PuzzlePainter extends CustomPainter {
                     ? '방문'
                     : '미방문'}',
             button: true,
+            onTap: onRegionTap == null ? null : () => onRegionTap!(entry.key),
             textDirection: TextDirection.ltr,
           ),
         ),

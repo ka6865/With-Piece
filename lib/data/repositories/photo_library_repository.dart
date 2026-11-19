@@ -131,16 +131,23 @@ class PhotoLibraryRepository {
   }
 
   // 원본(EXIF 포함). iCloud에만 있으면 내려받는다. 업로드 전에 재인코딩해 메타데이터를 지운다
-  Future<Uint8List?> originalBytes(String assetId) async =>
-      (await AssetEntity.fromId(assetId))?.originBytes;
+  Future<Uint8List?> originalBytes(
+    String assetId,
+    PMCancelToken cancelToken,
+  ) async => (await AssetEntity.fromId(
+    assetId,
+  ))?.getOriginBytes(cancelToken: cancelToken);
 
   // iCloud에만 있는 원본을 미리 내려받아 기기에 두게 한다. 한 번 받으면 다음 읽기는
   // 바로 끝난다(2026-11-20 실기기 측정: iCloud 원본 읽기 최대 2.7초, 기기 원본 0.01초).
   // 받은 바이트는 들고 있지 않는다
-  Future<void> prefetchOriginal(String assetId) async {
+  Future<void> prefetchOriginal(
+    String assetId,
+    PMCancelToken cancelToken,
+  ) async {
     final asset = await AssetEntity.fromId(assetId);
     if (asset == null || await asset.isLocallyAvailable(isOrigin: true)) return;
-    await asset.originBytes;
+    await asset.getOriginBytes(cancelToken: cancelToken);
   }
 
   static GeoPoint? _locationOf(AssetEntity asset) {

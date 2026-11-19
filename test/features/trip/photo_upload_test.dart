@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:woori_piece/core/supabase/supabase_providers.dart';
 import 'package:woori_piece/core/result/result.dart';
 import 'package:woori_piece/data/repositories/photo_repository.dart';
 import 'package:woori_piece/features/scan/trip_candidates.dart';
@@ -99,9 +103,10 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          sessionUserIdProvider.overrideWithValue(null),
           tripLocalPhotosProvider(query).overrideWith((ref) async => photos),
           photoRepositoryProvider.overrideWithValue(repo),
-          originalBytesProvider.overrideWithValue((_) async => Uint8List(1)),
+          originalBytesProvider.overrideWithValue((_, _) async => Uint8List(1)),
         ],
         child: MaterialApp(home: PhotoUploadPage(query: query)),
       ),
@@ -159,9 +164,10 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          sessionUserIdProvider.overrideWithValue(null),
           tripLocalPhotosProvider(query).overrideWith((ref) async => const []),
           photoRepositoryProvider.overrideWithValue(repo),
-          originalBytesProvider.overrideWithValue((_) async => Uint8List(1)),
+          originalBytesProvider.overrideWithValue((_, _) async => Uint8List(1)),
           libraryPickerProvider.overrideWithValue(
             (context) async => [
               LocalPhoto(
@@ -188,9 +194,10 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          sessionUserIdProvider.overrideWithValue(null),
           tripLocalPhotosProvider(query).overrideWith((ref) async => photos),
           photoRepositoryProvider.overrideWithValue(repo),
-          originalBytesProvider.overrideWithValue((_) async => Uint8List(1)),
+          originalBytesProvider.overrideWithValue((_, _) async => Uint8List(1)),
         ],
         child: MaterialApp(home: PhotoUploadPage(query: query)),
       ),
@@ -209,9 +216,10 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          sessionUserIdProvider.overrideWithValue(null),
           tripLocalPhotosProvider(query).overrideWith((ref) async => photos),
           photoRepositoryProvider.overrideWithValue(repo),
-          originalBytesProvider.overrideWithValue((id) async {
+          originalBytesProvider.overrideWithValue((id, _) async {
             if (id == 's0' && originalReadFailed) {
               originalReadFailed = false;
               throw StateError('원본을 읽지 못함');
@@ -249,6 +257,73 @@ void main() {
     };
     expect(s1Ids, hasLength(1));
     expect(s1Ids.single, isNotNull);
+  });
+
+  testWidgets('원본을 받는 중 중단하면 미완료 선택을 남긴다', (tester) async {
+    final repo = FakePhotoRepository();
+    var reads = 0;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sessionUserIdProvider.overrideWithValue(null),
+          tripLocalPhotosProvider(query).overrideWith((ref) async => photos),
+          photoRepositoryProvider.overrideWithValue(repo),
+          prefetchOriginalProvider.overrideWithValue((_, _) async {}),
+          originalBytesProvider.overrideWithValue((_, _) {
+            reads++;
+            return Completer<Uint8List?>().future;
+          }),
+        ],
+        child: MaterialApp(home: PhotoUploadPage(query: query)),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await selectSix(tester);
+    await tester.tap(find.text('6장 올리기'));
+    await tester.pump();
+    expect(reads, uploadWorkers);
+    await tester.tap(find.text('중단'));
+    await tester.pumpAndSettle();
+    expect(repo.calls, isEmpty);
+    expect(reads, uploadWorkers);
+    expect(find.text('6장 다시 올리기'), findsOneWidget);
+  });
+
+  testWidgets('화면을 다시 열어도 실패한 업로드는 저장한 ID를 재사용한다', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final repo = FakePhotoRepository()..failFirst.add(0);
+    Future<void> open() async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            sessionUserIdProvider.overrideWithValue('u1'),
+            sharedPreferencesProvider.overrideWithValue(prefs),
+            tripLocalPhotosProvider(query).overrideWith((ref) async => photos),
+            photoRepositoryProvider.overrideWithValue(repo),
+            prefetchOriginalProvider.overrideWithValue((_, _) async {}),
+            originalBytesProvider.overrideWithValue(
+              (_, _) async => Uint8List(1),
+            ),
+          ],
+          child: MaterialApp(home: PhotoUploadPage(query: query)),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tapPhoto(tester, 's0');
+      await tester.tap(find.text('1장 올리기'));
+      await tester.pumpAndSettle();
+    }
+
+    await open();
+    final id = repo.calls.single.id;
+    expect(id, isNotNull);
+    expect(prefs.getKeys(), hasLength(1));
+    await tester.pumpWidget(const SizedBox());
+    await open();
+    expect(repo.calls, hasLength(2));
+    expect(repo.calls.last.id, id);
+    expect(prefs.getKeys(), isEmpty);
   });
 
   test('여행에 없는 조각의 사진과 바뀐 자동 제목을 찾는다', () {
@@ -290,6 +365,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          sessionUserIdProvider.overrideWithValue(null),
           tripLocalPhotosProvider(query).overrideWith(
             (ref) async => [
               LocalPhoto(
@@ -301,7 +377,7 @@ void main() {
           ),
           photoRepositoryProvider.overrideWithValue(repo),
           tripRepositoryProvider.overrideWithValue(trips),
-          originalBytesProvider.overrideWithValue((_) async => Uint8List(1)),
+          originalBytesProvider.overrideWithValue((_, _) async => Uint8List(1)),
           regionNamesProvider.overrideWith(
             (ref) async => {'32060': '속초시', '32400': '고성군'},
           ),
@@ -325,10 +401,11 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          sessionUserIdProvider.overrideWithValue(null),
           tripLocalPhotosProvider(query).overrideWith((ref) async => photos),
           photoRepositoryProvider.overrideWithValue(FakePhotoRepository()),
-          originalBytesProvider.overrideWithValue((_) async => Uint8List(1)),
-          prefetchOriginalProvider.overrideWithValue((id) async {
+          originalBytesProvider.overrideWithValue((_, _) async => Uint8List(1)),
+          prefetchOriginalProvider.overrideWithValue((id, _) async {
             prefetched.add(id);
           }),
         ],

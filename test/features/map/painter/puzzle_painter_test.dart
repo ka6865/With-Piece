@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:woori_piece/features/map/painter/puzzle_layout.dart';
 import 'package:woori_piece/features/map/painter/puzzle_painter.dart';
@@ -57,6 +58,48 @@ void main() {
     );
     await tester.tapAt(knownSokchoPoint);
     expect(tapped, '32060');
+  });
+
+  testWidgets('VoiceOver 지역 동작은 실제 지역 코드를 전달한다', (tester) async {
+    final semantics = tester.ensureSemantics();
+    final asset = MapAsset.parse(
+      File('assets/map/regions_v1.json').readAsStringSync(),
+    );
+    String? tapped;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SizedBox(
+          width: 390,
+          height: 600,
+          child: PuzzleMap(
+            asset: asset,
+            visitedRegionIds: const {},
+            onRegionTap: (id) => tapped = id,
+          ),
+        ),
+      ),
+    );
+
+    final semanticsOwner =
+        tester.binding.renderViews.single.owner!.semanticsOwner!;
+    final root = semanticsOwner.rootSemanticsNode!;
+    final nodes = <SemanticsNode>[];
+    bool collect(SemanticsNode node) {
+      nodes.add(node);
+      node.visitChildren(collect);
+      return true;
+    }
+
+    collect(root);
+    final region = nodes.singleWhere(
+      (node) => node.getSemanticsData().label == '속초시, 미방문',
+    );
+    expect(region.getSemanticsData().hasAction(SemanticsAction.tap), isTrue);
+    semanticsOwner.performAction(region.id, SemanticsAction.tap);
+    await tester.pump();
+
+    expect(tapped, '32060');
+    semantics.dispose();
   });
 
   testWidgets('확대한 상태에서도 탭이 같은 조각을 고른다', (tester) async {

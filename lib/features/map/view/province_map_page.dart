@@ -162,24 +162,46 @@ Future<void> _changeKind(
 
 // 시도 하나의 조각만 담은 애셋. 뷰포트는 그 조각들의 경위도에서 계산하고,
 // 인셋은 원본 인셋이 속한 시도(경북)일 때만 유지한다
-MapAsset? provinceAssetOf(MapAsset regionAsset, String provinceId) {
-  final features = regionAsset.features
-      .where((f) => f.parentId == provinceId)
-      .toList();
-  if (features.isEmpty) return null;
-  final featureIds = {for (final f in features) f.id};
-  final insets = regionAsset.insets
-      .where((i) => featureIds.contains(i.regionId))
-      .toList();
-  return _assetOf(regionAsset, features, insets);
-}
+MapAsset? provinceAssetOf(MapAsset regionAsset, String provinceId) =>
+    _cachedDerivedAsset((regionAsset, provinceId, true), () {
+      final features = regionAsset.features
+          .where((f) => f.parentId == provinceId)
+          .toList();
+      if (features.isEmpty) return null;
+      final featureIds = {for (final f in features) f.id};
+      final insets = regionAsset.insets
+          .where((i) => featureIds.contains(i.regionId))
+          .toList();
+      return _assetOf(regionAsset, features, insets);
+    });
 
 // 조각 하나의 모양만 담은 애셋. 구도 맞춤 화면의 틀로 쓴다. 인셋 없이 모든 폴리곤을
 // 한 뷰포트에 넣는다(울릉군처럼 인셋에만 있는 조각도 그려지게)
-MapAsset? regionShapeAssetOf(MapAsset regionAsset, String regionId) {
-  final feature = regionAsset.byId(regionId);
-  if (feature == null) return null;
-  return _assetOf(regionAsset, [feature], const []);
+MapAsset? regionShapeAssetOf(MapAsset regionAsset, String regionId) =>
+    _cachedDerivedAsset((regionAsset, regionId, false), () {
+      final feature = regionAsset.byId(regionId);
+      if (feature == null) return null;
+      return _assetOf(regionAsset, [feature], const []);
+    });
+
+// shortcut: 최근 32개 파생 애셋만 유지, 시도 전환으로 자주 재생성되면 상향한다
+final _derivedAssets = <(MapAsset, String, bool), MapAsset>{};
+MapAsset? _cachedDerivedAsset(
+  (MapAsset, String, bool) key,
+  MapAsset? Function() build,
+) {
+  final cached = _derivedAssets.remove(key);
+  if (cached != null) {
+    _derivedAssets[key] = cached;
+    return cached;
+  }
+  final asset = build();
+  if (asset == null) return null;
+  _derivedAssets[key] = asset;
+  if (_derivedAssets.length > 32) {
+    _derivedAssets.remove(_derivedAssets.keys.first);
+  }
+  return asset;
 }
 
 MapAsset _assetOf(

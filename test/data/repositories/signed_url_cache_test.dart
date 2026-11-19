@@ -28,6 +28,47 @@ void main() {
     expect((await cache.urls(['a']))['a'], 'a?t=3');
   });
 
+  test('요청을 100개씩 나누고 중복을 제거하며 512개 LRU를 유지한다', () async {
+    final requests = <List<String>>[];
+    final cache = SignedUrlCache((paths) async {
+      requests.add(paths);
+      return {for (final path in paths) path: 'url:$path'};
+    });
+    final paths = [for (var i = 0; i < 513; i++) 'p$i', 'p0', 'p1'];
+
+    final urls = await cache.urls(paths);
+    expect(urls, hasLength(513));
+    expect(requests.map((batch) => batch.length), [
+      100,
+      100,
+      100,
+      100,
+      100,
+      13,
+    ]);
+
+    await cache.urls(['p0']); // p0을 최근 사용으로 갱신한다.
+    await cache.urls(['p513']);
+    await cache.urls(['p0']);
+    await cache.urls(['p1']);
+    expect(requests.last, ['p1']);
+  });
+
+  test('발급에서 빠진 만료 URL은 이전 서명값을 반환하지 않는다', () async {
+    var now = DateTime(2026, 11, 1);
+    var include = true;
+    final cache = SignedUrlCache(
+      (paths) async =>
+          include ? {for (final path in paths) path: 'old:$path'} : {},
+      now: () => now,
+    );
+    expect(await cache.urls(['a']), {'a': 'old:a'});
+
+    now = now.add(const Duration(minutes: 56));
+    include = false;
+    expect(await cache.urls(['a']), isEmpty);
+  });
+
   test('같은 커플 아카이브도 계정별 FutureProvider family 상태를 공유하지 않는다', () async {
     final releaseB = Completer<void>();
     const a = (userId: 'user-a', coupleId: 'same-couple');

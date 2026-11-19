@@ -30,6 +30,21 @@ class PuzzleLayout {
   static const insetSideRatio = 0.18;
   static const insetMargin = 8.0;
   static const minTapSide = 44.0;
+  static const cacheSize = 8;
+  static final _cache = <(MapAsset, Size), PuzzleLayout>{};
+
+  static PuzzleLayout cached({required MapAsset asset, required Size size}) {
+    final key = (asset, size);
+    final cached = _cache.remove(key);
+    if (cached != null) {
+      _cache[key] = cached;
+      return cached;
+    }
+    final layout = PuzzleLayout.build(asset: asset, size: size);
+    _cache[key] = layout;
+    if (_cache.length > cacheSize) _cache.remove(_cache.keys.first);
+    return layout;
+  }
 
   factory PuzzleLayout.build({required MapAsset asset, required Size size}) {
     final mainland = MapProjection.fit(bbox: asset.mainlandBbox, size: size);

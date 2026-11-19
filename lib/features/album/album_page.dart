@@ -47,6 +47,7 @@ class AlbumPage extends ConsumerWidget {
     final confirmed = [
       ...?tripRows?.where((t) => t.status == TripStatus.confirmed),
     ]..sort((a, b) => b.range.start.compareTo(a.range.start));
+    final photosByTrip = indexPhotosByTrip(photos);
     // 빌더 안이 아니라 build에서 구독한다
     final unseen = {
       if (archived == null)
@@ -54,7 +55,8 @@ class AlbumPage extends ConsumerWidget {
           if (hasUnseenComment(ref, scope, trip.id)) trip.id,
     };
     final covers = {
-      for (final trip in confirmed) trip.id: ?_coverOf(trip, photos),
+      for (final trip in confirmed)
+        trip.id: ?_coverOf(trip, photosByTrip[trip.id] ?? const []),
     };
     return Scaffold(
       appBar: AppBar(title: Text(archived == null ? '퍼즐 앨범' : '지난 기록')),
@@ -93,9 +95,7 @@ class AlbumPage extends ConsumerWidget {
                           caption:
                               '${formatRange(trip.range)} · '
                               '${trip.regionIds.map((id) => names[id] ?? id).join(' · ')}',
-                          photoCount: photos
-                              .where((p) => p.tripId == trip.id)
-                              .length,
+                          photoCount: photosByTrip[trip.id]?.length ?? 0,
                           newComment: unseen.contains(trip.id),
                           onTap: () => context.push(
                             archived == null
@@ -177,8 +177,14 @@ class _AlbumCard extends StatelessWidget {
   }
 }
 
-PhotoRecord? _coverOf(Trip trip, List<PhotoRecord> photos) {
-  final mine = photos.where((p) => p.tripId == trip.id);
-  return mine.where((p) => p.id == trip.coverPhotoId).firstOrNull ??
-      mine.firstOrNull;
+Map<String, List<PhotoRecord>> indexPhotosByTrip(Iterable<PhotoRecord> photos) {
+  final indexed = <String, List<PhotoRecord>>{};
+  for (final photo in photos) {
+    (indexed[photo.tripId] ??= []).add(photo);
+  }
+  return indexed;
 }
+
+PhotoRecord? _coverOf(Trip trip, List<PhotoRecord> photos) =>
+    photos.where((p) => p.id == trip.coverPhotoId).firstOrNull ??
+    photos.firstOrNull;
