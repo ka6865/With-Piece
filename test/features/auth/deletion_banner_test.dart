@@ -10,6 +10,8 @@ import 'package:woori_piece/data/repositories/account_repository.dart';
 import 'package:woori_piece/data/repositories/repository_providers.dart';
 import 'package:woori_piece/features/auth/account_state.dart';
 import 'package:woori_piece/features/scan/scan_store.dart';
+import 'package:woori_piece/features/scan/scan_providers.dart';
+import 'package:woori_piece/features/scan/photo_days.dart';
 
 class FakeAccountRepository implements AccountRepository {
   int cancels = 0;
@@ -63,9 +65,36 @@ Future<FakeAccountRepository> pump(
 }
 
 void main() {
+  test('다른 기기에서 삭제를 요청하면 기존 스캔 파일을 삭제한다', () async {
+    const userId = 'remote-delete';
+    final folder = await Directory.systemTemp.createTemp('remote-delete');
+    addTearDown(() => folder.delete(recursive: true));
+    addTearDown(() => ScanStore.allowUserAfterDeletionCanceled(userId));
+    final store = ScanStore(folder, userId: userId);
+    await store.write(
+      ScanSnapshot({
+        PhotoDay(DateTime(2026, 10, 3), '32060'): 1,
+      }, DateTime(2026, 11, 20)),
+    );
+    final repo = FakeAccountRepository()
+      ..readDeletionDate = () async => Ok(DateTime(2026, 12, 20));
+    final container = ProviderContainer.test(
+      overrides: [
+        sessionUserIdProvider.overrideWithValue(userId),
+        accountRepositoryProvider.overrideWithValue(repo),
+        scanStoreProvider(userId).overrideWith((ref) => store),
+      ],
+    );
+    await container.read(myDeletionDateProvider(userId).future);
+    expect(store.isDeletionPending, isTrue);
+    expect(await store.read(), ScanSnapshot.empty);
+  });
+
   test('다른 기기의 삭제 취소를 조회하면 스캔 차단을 해제한다', () async {
     const userId = 'remote-cancel';
-    final store = ScanStore(Directory.systemTemp, userId: userId);
+    final folder = await Directory.systemTemp.createTemp('remote-cancel');
+    addTearDown(() => folder.delete(recursive: true));
+    final store = ScanStore(folder, userId: userId);
     addTearDown(() => ScanStore.allowUserAfterDeletionCanceled(store.userId));
     DateTime? deletionDate = DateTime(2026, 12, 17);
     final repo = FakeAccountRepository()
@@ -74,6 +103,7 @@ void main() {
       overrides: [
         sessionUserIdProvider.overrideWithValue(userId),
         accountRepositoryProvider.overrideWithValue(repo),
+        scanStoreProvider(userId).overrideWith((ref) => store),
       ],
     );
 

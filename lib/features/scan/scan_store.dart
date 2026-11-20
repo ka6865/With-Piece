@@ -43,28 +43,29 @@ class ScanStore {
   static final _locks = <String, Future<void>>{};
   static final _legacyCleanup = <String, Future<void>>{};
 
-  static void blockUser(String userId) => _blockedUsers[userId] = Object();
+  static Object blockUser(String userId) => _blockedUsers[userId] = Object();
 
   static Object? deletionBlockFor(String userId) => _blockedUsers[userId];
 
-  static void applyDeletionStatus(
+  static bool applyDeletionStatus(
     String userId, {
     required Object? blockAtRequest,
     required bool pending,
   }) {
     // 조회하는 사이 이 기기에서 새 삭제를 요청했다면 최신 차단을 유지한다.
-    if (!identical(blockAtRequest, _blockedUsers[userId])) return;
+    if (!identical(blockAtRequest, _blockedUsers[userId])) return false;
     if (pending) {
       _blockedUsers.putIfAbsent(userId, Object.new);
     } else {
       _blockedUsers.remove(userId);
     }
+    return true;
   }
 
   static void allowUserAfterDeletionCanceled(String userId) =>
       _blockedUsers.remove(userId);
 
-  static Future<void> removeLegacySharedCache(Directory documents) {
+  static Future<void> removeLegacyCache(Directory documents) {
     final path = documents.absolute.path;
     return _legacyCleanup.putIfAbsent(path, () async {
       try {
@@ -78,6 +79,22 @@ class ScanStore {
         rethrow;
       }
     });
+  }
+
+  static final _accountId = RegExp(
+    r'^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$',
+  );
+
+  static Future<void> removeLegacyAccountCaches(Directory root) async {
+    if (!await root.exists()) return;
+    await for (final entry in root.list(followLinks: false)) {
+      if (entry is Directory &&
+          _accountId.hasMatch(
+            entry.uri.pathSegments.where((s) => s.isNotEmpty).last,
+          )) {
+        await removeLegacyCache(entry);
+      }
+    }
   }
 
   Directory get _userDirectory =>
@@ -99,14 +116,12 @@ class ScanStore {
     });
   }
 
-  Future<void> clearForDeletion() {
-    blockUser(userId);
-    return runExclusive(() async {
-      if (await _userDirectory.exists()) {
-        await _userDirectory.delete(recursive: true);
-      }
-    });
-  }
+  Future<void> clearForDeletion(Object block) => runExclusive(() async {
+    if (!identical(block, deletionBlockFor(userId))) return;
+    if (await _userDirectory.exists()) {
+      await _userDirectory.delete(recursive: true);
+    }
+  });
 
   Future<ScanSnapshot> read() async {
     if (!await _file.exists()) return ScanSnapshot.empty;

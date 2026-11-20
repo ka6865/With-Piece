@@ -1,7 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:woori_piece/core/result/result.dart';
 import 'package:woori_piece/data/repositories/couple_repository.dart';
-import 'package:woori_piece/data/repositories/photo_day_repository.dart';
 import 'package:woori_piece/data/repositories/photo_sharing_repository.dart';
 import 'package:woori_piece/data/repositories/trip_repository.dart';
 import 'package:woori_piece/features/scan/home_regions.dart';
@@ -24,11 +23,6 @@ Future<void> main() async {
     final coupleId = (await coupleA.current()).valueOrThrow!.id;
 
     final sokcho = PhotoDay(DateTime(2026, 10, 3), '32060');
-    await PhotoDayRepository(
-      a,
-    ).sync(coupleId, {sokcho: 3, PhotoDay(DateTime(2026, 10, 4), '32400'): 1});
-    await PhotoDayRepository(b).sync(coupleId, {sokcho: 1});
-
     expect((await TripRepository(a).matchedDays()).valueOrThrow, isEmpty);
     await PhotoSharingRepository(
       a,

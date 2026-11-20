@@ -39,7 +39,6 @@ final photoSharingChoicesProvider = FutureProvider<PhotoSharingChoices>((
   if (userId == null) throw AppError.validation;
   final couple = await ref.watch(currentCoupleProvider.future);
   if (couple == null || couple.startedOn == null) throw AppError.validation;
-  await ref.watch(photoDaysSyncedProvider.future);
   final snapshot = await ref.watch(scanSnapshotProvider(userId).future);
   final approved =
       (await ref
@@ -50,9 +49,9 @@ final photoSharingChoicesProvider = FutureProvider<PhotoSharingChoices>((
   return PhotoSharingChoices(
     coupleId: couple.id,
     days: {
-      ...approved,
       for (final entry in snapshot.days.entries)
         if (!entry.key.day.isBefore(couple.startedOn!)) entry.key: entry.value,
+      ...approved,
     },
     approved: approved.keys.toSet(),
     names: await ref.watch(regionNamesProvider.future),

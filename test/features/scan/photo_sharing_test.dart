@@ -118,7 +118,6 @@ void main() {
               startedOn: DateTime(2026, 1, 1),
             ),
           ),
-          photoDaysSyncedProvider.overrideWith((ref) async {}),
           scanSnapshotProvider.overrideWith(
             (ref, userId) async => ScanSnapshot({}, DateTime(2026, 11, 1)),
           ),

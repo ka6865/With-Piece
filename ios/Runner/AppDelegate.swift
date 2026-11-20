@@ -16,6 +16,36 @@ import UIKit
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "HeicEncoderPlugin") {
       HeicEncoderPlugin.register(with: registrar)
     }
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "ScanCacheDirectory") {
+      let channel = FlutterMethodChannel(
+        name: "kr.wooripiece/scan_cache", binaryMessenger: registrar.messenger())
+      channel.setMethodCallHandler { call, result in
+        guard call.method == "directory" else {
+          result(FlutterMethodNotImplemented)
+          return
+        }
+        do {
+          let support = try FileManager.default.url(
+            for: .applicationSupportDirectory, in: .userDomainMask,
+            appropriateFor: nil, create: true)
+          result(try ScanCacheDirectory.prepare(in: support).path)
+        } catch {
+          result(FlutterError(code: "scan_cache_directory", message: nil, details: nil))
+        }
+      }
+    }
+  }
+}
+
+enum ScanCacheDirectory {
+  static func prepare(in support: URL) throws -> URL {
+    var directory = support.appendingPathComponent("scan_snapshots", isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    // 사귄 날 이전을 포함한 스캔 집계도 백업에 들어가지 않아야 한다.
+    var values = URLResourceValues()
+    values.isExcludedFromBackup = true
+    try directory.setResourceValues(values)
+    return directory
   }
 }
 

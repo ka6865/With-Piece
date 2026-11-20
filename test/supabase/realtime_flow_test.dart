@@ -11,7 +11,6 @@ import 'package:woori_piece/core/result/result.dart';
 import 'package:woori_piece/core/supabase/supabase_providers.dart';
 import 'package:woori_piece/data/repositories/couple_repository.dart';
 import 'package:woori_piece/data/repositories/account_repository.dart';
-import 'package:woori_piece/data/repositories/photo_day_repository.dart';
 import 'package:woori_piece/data/repositories/photo_sharing_repository.dart';
 import 'package:woori_piece/data/repositories/trip_repository.dart';
 import 'package:woori_piece/features/album/album_providers.dart';
@@ -170,11 +169,7 @@ Future<void> main() async {
     final b = await signUpLocal();
     final id = await _couple(a, b);
     final container = ProviderContainer(
-      overrides: [
-        supabaseClientProvider.overrideWithValue(a),
-        // 스캔 권한과 무관한 서버 알림 경로만 검증한다.
-        photoDaysSyncedProvider.overrideWith((ref) async {}),
-      ],
+      overrides: [supabaseClientProvider.overrideWithValue(a)],
     );
     addTearDown(() async {
       container.dispose();
@@ -195,9 +190,6 @@ Future<void> main() async {
     await _joined(a, 'couple:$id');
     await _joined(a, 'couple-shares:$id');
     final day = PhotoDay(DateTime(2026, 10, 3), '32060');
-    for (final client in [a, b]) {
-      (await PhotoDayRepository(client).sync(id, {day: 1})).valueOrThrow;
-    }
     (await PhotoSharingRepository(
       a,
     ).update(id, approve: {day: 1}, revoke: {})).valueOrThrow;
@@ -332,7 +324,6 @@ Future<void> main() async {
     }
     expect(publicMessages, isEmpty);
     final day = PhotoDay(DateTime(2026, 10, 3), '32060');
-    (await PhotoDayRepository(a).sync(id, {day: 1})).valueOrThrow;
     (await PhotoSharingRepository(
       a,
     ).update(id, approve: {day: 1}, revoke: {})).valueOrThrow;

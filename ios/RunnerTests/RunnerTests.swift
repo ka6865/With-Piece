@@ -1,12 +1,17 @@
 import Flutter
 import UIKit
 import XCTest
+@testable import Runner
 
 class RunnerTests: XCTestCase {
 
-  func testExample() {
-    // If you add code to the Runner application, consider adding tests here.
-    // See https://developer.apple.com/documentation/xctest for more information about using XCTest.
+  func testScanDirectoryIsExcludedFromBackup() throws {
+    let support = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: support) }
+    let directory = try ScanCacheDirectory.prepare(in: support)
+    XCTAssertTrue(FileManager.default.fileExists(atPath: directory.path))
+    XCTAssertEqual(
+      try directory.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup, true)
   }
-
 }
