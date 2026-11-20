@@ -36,9 +36,7 @@ Future<Result<void>> rescanLibrary(WidgetRef ref) async {
         await ref.read(regionLocatorProvider.future),
         store,
       ),
-      () => ref
-        ..invalidate(scanSnapshotProvider(userId))
-        ..invalidate(photoDaysSyncedProvider),
+      () => ref.invalidate(scanSnapshotProvider(userId)),
     );
   } catch (_) {
     return const Err(AppError.unknown);

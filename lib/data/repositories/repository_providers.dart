@@ -6,7 +6,6 @@ import 'account_repository.dart';
 import 'auth_repository.dart';
 import 'comment_repository.dart';
 import 'couple_repository.dart';
-import 'photo_day_repository.dart';
 import 'photo_library_repository.dart';
 import 'refresh_repository.dart';
 import 'region_cover_repository.dart';
@@ -30,10 +29,6 @@ final coupleRepositoryProvider = Provider<CoupleRepository>(
 
 final tripRepositoryProvider = Provider<TripRepository>(
   (ref) => TripRepository(ref.watch(supabaseClientProvider)),
-);
-
-final photoDayRepositoryProvider = Provider<PhotoDayRepository>(
-  (ref) => PhotoDayRepository(ref.watch(supabaseClientProvider)),
 );
 
 final photoLibraryRepositoryProvider = Provider<PhotoLibraryRepository>(

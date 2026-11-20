@@ -61,8 +61,7 @@ void main() {
     await store.write(ScanSnapshot({sokcho: 2}, DateTime(2026, 11, 1)));
     await other.write(ScanSnapshot({goseong: 3}, DateTime(2026, 11, 2)));
 
-    ScanStore.blockUser(store.userId);
-    await store.clearForDeletion();
+    await store.clearForDeletion(ScanStore.blockUser(store.userId));
 
     expect((await store.read()).days, isEmpty);
     expect((await other.read()).days, {goseong: 3});
@@ -73,10 +72,26 @@ void main() {
     File('${dir.path}/photo_days.json').writeAsStringSync('legacy');
     File('${dir.path}/photo_days.json.tmp').writeAsStringSync('legacy');
 
-    await ScanStore.removeLegacySharedCache(dir);
+    await ScanStore.removeLegacyCache(dir);
 
     expect(await File('${dir.path}/photo_days.json').exists(), isFalse);
     expect(await File('${dir.path}/photo_days.json.tmp').exists(), isFalse);
+  });
+
+  test('이전 계정 경로의 스캔 파일만 삭제한다', () async {
+    final account = Directory(
+      '${dir.path}/73557da8-1a24-4c7f-a866-2aca16571075',
+    )..createSync();
+    final scan = File('${account.path}/photo_days.json')..createSync();
+    final other = File('${account.path}/settings.json')..createSync();
+    final protected = Directory('${dir.path}/scan_snapshots')..createSync();
+    final current = File('${protected.path}/photo_days.json')..createSync();
+
+    await ScanStore.removeLegacyAccountCaches(dir);
+
+    expect(scan.existsSync(), isFalse);
+    expect(other.existsSync(), isTrue);
+    expect(current.existsSync(), isTrue);
   });
 
   test('이전 캐시를 지우지 못했으면 다음 호출에서 다시 지운다', () async {
@@ -84,12 +99,12 @@ void main() {
     // 쓰기 권한을 빼 삭제를 실패시킨다
     Process.runSync('chmod', ['555', dir.path]);
     await expectLater(
-      ScanStore.removeLegacySharedCache(dir),
+      ScanStore.removeLegacyCache(dir),
       throwsA(isA<FileSystemException>()),
     );
     Process.runSync('chmod', ['755', dir.path]);
 
-    await ScanStore.removeLegacySharedCache(dir);
+    await ScanStore.removeLegacyCache(dir);
 
     expect(file.existsSync(), isFalse);
   });

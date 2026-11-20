@@ -16,12 +16,20 @@ final myDeletionDateProvider = FutureProvider.family<DateTime?, String>((
   final blockAtRequest = ScanStore.deletionBlockFor(userId);
   final date = (await ref.watch(accountRepositoryProvider).myDeletionDate())
       .valueOrThrow;
-  if (ref.mounted && ref.read(sessionUserIdProvider) == userId) {
-    ScanStore.applyDeletionStatus(
-      userId,
-      blockAtRequest: blockAtRequest,
-      pending: date != null,
-    );
+  if (!ref.mounted || ref.read(sessionUserIdProvider) != userId) return date;
+  final applied = ScanStore.applyDeletionStatus(
+    userId,
+    blockAtRequest: blockAtRequest,
+    pending: date != null,
+  );
+  if (applied && date != null) {
+    final block = ScanStore.deletionBlockFor(userId)!;
+    try {
+      final store = await ref.read(scanStoreProvider(userId).future);
+      await store.clearForDeletion(block);
+    } catch (_) {
+      // 기기 저장소에 일시적으로 접근하지 못하면 다음 삭제 상태 조회에서 다시 지운다.
+    }
   }
   return date;
 });
@@ -69,9 +77,7 @@ class DeletionBanners extends ConsumerWidget {
                         ScanStore.allowUserAfterDeletionCanceled(id);
                         ref.invalidate(myDeletionDateProvider(id));
                         ref.invalidate(partnerDeletionDatesProvider(id));
-                        ref
-                          ..invalidate(scanSnapshotProvider(id))
-                          ..invalidate(photoDaysSyncedProvider);
+                        ref.invalidate(scanSnapshotProvider(id));
                       }
                     case Err(error: AppError.validation):
                       if (userId case final id?) {

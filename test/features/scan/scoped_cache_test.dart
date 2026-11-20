@@ -21,8 +21,6 @@ import 'package:woori_piece/features/map/view/national_map_page.dart';
 import 'package:woori_piece/features/map/view/province_map_page.dart';
 import 'package:woori_piece/features/map/view/puzzle_map.dart';
 import 'package:woori_piece/features/scan/realtime_sync.dart';
-import 'package:woori_piece/features/scan/scan_store.dart';
-import 'package:woori_piece/features/scan/scan_sync.dart';
 import 'package:woori_piece/features/scan/scan_providers.dart';
 import 'package:woori_piece/features/scan/trip_candidates.dart';
 import 'package:woori_piece/features/trip/photo_upload_page.dart';
@@ -71,20 +69,6 @@ class _Photos extends Fake implements PhotoRepository {
   );
   @override
   Future<Result<List<PhotoRecord>>> forCouple(String coupleId) => response;
-}
-
-class _Sync extends Fake implements ScanSync {
-  final calls = <CoupleScope>[];
-  @override
-  Future<Result<void>> sync(
-    ScanSnapshot snapshot,
-    DateTime startedOn, {
-    required String userId,
-    required String coupleId,
-  }) async {
-    calls.add((userId: userId, coupleId: coupleId));
-    return const Ok(null);
-  }
 }
 
 class _Fixture {
@@ -155,49 +139,23 @@ class _Fixture {
 }
 
 void main() {
-  for (final accountChange in [true, false]) {
-    test('스캔 대기 중 ${accountChange ? '계정' : '커플'}이 바뀌면 이전 범위로 쓰지 않는다', () async {
-      final pending = Completer<ScanSnapshot>();
-      final nextCouple = Completer<Couple?>();
-      final sync = _Sync();
-      Future<Couple?> couple = Future.value(
-        Couple(id: 'couple-a', partnerId: 'p', startedOn: DateTime(2026)),
-      );
-      final container = ProviderContainer(
-        retry: (count, error) => null,
-        overrides: [
-          sessionUserIdProvider.overrideWith((ref) => ref.watch(_user)),
-          currentCoupleProvider.overrideWith((ref) {
-            ref.watch(sessionUserIdProvider);
-            return couple;
-          }),
-          scanSnapshotProvider.overrideWith((ref, userId) => pending.future),
-          scanSyncProvider.overrideWithValue(sync),
-        ],
-      );
-      final subscription = container.listen(photoDaysSyncedProvider, (_, _) {});
-      await container.pump();
-      couple = nextCouple.future;
-      if (accountChange) {
-        container.read(_user.notifier).set('b');
-      } else {
-        container.invalidate(currentCoupleProvider);
-      }
-      pending.complete(ScanSnapshot({}, DateTime(2026, 11, 18)));
-      await container.pump();
-      expect(sync.calls, isEmpty);
-      nextCouple.complete(
-        Couple(id: 'couple-b', partnerId: 'q', startedOn: DateTime(2026)),
-      );
-      await container.read(photoDaysSyncedProvider.future);
-      await container.pump();
-      expect(sync.calls, [
-        (userId: accountChange ? 'b' : 'a', coupleId: 'couple-b'),
-      ]);
-      subscription.close();
-      container.dispose();
-    });
-  }
+  test('사진첩을 스캔하지 않아도 서버의 승인 교집합을 읽는다', () async {
+    final container = ProviderContainer.test(
+      overrides: [
+        sessionUserIdProvider.overrideWithValue('a'),
+        currentCoupleProvider.overrideWith(
+          (ref) async =>
+              Couple(id: 'couple-a', partnerId: 'p', startedOn: DateTime(2026)),
+        ),
+        tripRepositoryProvider.overrideWithValue(_Trips()),
+        scanSnapshotProvider.overrideWith(
+          (ref, userId) => throw StateError('스캔 호출'),
+        ),
+      ],
+    );
+    expect(await container.read(matchedDaysProvider.future), isEmpty);
+    expect(container.exists(scanSnapshotProvider('a')), isFalse);
+  });
 
   for (final national in [true, false]) {
     testWidgets('${national ? '전국' : '시도'} 지도는 재조회와 오프라인 오류에 마지막 진행률을 유지한다', (

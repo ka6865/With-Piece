@@ -12,6 +12,7 @@ import 'auth_state.dart';
 import 'login_page.dart';
 import '../scan/rescan.dart';
 import '../scan/scan_providers.dart';
+import '../scan/scan_store.dart';
 
 // 여러 로그인 방법을 한 계정에 묶는다. Kakao는 이메일이 없어 자동 연동되지 않는다(설계 10.2)
 class AccountLinksPage extends ConsumerStatefulWidget {
@@ -142,15 +143,15 @@ class _AccountLinksPageState extends ConsumerState<AccountLinksPage> {
                 );
                 final deletingUserId = ref.read(sessionUserIdProvider);
                 final accountRepository = ref.read(accountRepositoryProvider);
-                final scanSync = ref.read(scanSyncProvider);
                 final scanStoreFuture = deletingUserId == null
                     ? null
                     : ref.read(scanStoreProvider(deletingUserId).future);
                 final result = await accountRepository.requestDeletion();
                 if (result is Ok) {
                   if (deletingUserId != null) {
+                    final block = ScanStore.blockUser(deletingUserId);
                     try {
-                      await (await scanStoreFuture!).clearForDeletion();
+                      await (await scanStoreFuture!).clearForDeletion(block);
                     } catch (_) {
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
@@ -158,7 +159,6 @@ class _AccountLinksPageState extends ConsumerState<AccountLinksPage> {
                         );
                       }
                     }
-                    await scanSync.clearForUser(deletingUserId);
                   }
                 }
                 if (result is Ok &&
@@ -167,7 +167,6 @@ class _AccountLinksPageState extends ConsumerState<AccountLinksPage> {
                   container
                     ..invalidate(partnerDeletionDatesProvider(deletingUserId))
                     ..invalidate(scanSnapshotProvider(deletingUserId))
-                    ..invalidate(photoDaysSyncedProvider)
                     ..invalidate(myDeletionDateProvider(deletingUserId))
                     ..invalidate(currentCoupleProvider);
                 }

@@ -1,5 +1,4 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:path_provider/path_provider.dart';
 
 import '../../core/result/result.dart';
 import '../../data/repositories/repository_providers.dart';
@@ -12,12 +11,12 @@ import '../auth/auth_state.dart';
 import 'home_regions.dart';
 import 'progress.dart';
 import 'photo_days.dart';
+import 'scan_directory.dart';
 import 'scan_store.dart';
-import 'scan_sync.dart';
 import 'scanner.dart';
 import 'trip_candidates.dart';
 
-// 스캔 → 사귄 날 기준 업로드 → 교집합 → 생활권·후보 계산(설계 5장)
+// 기기 스캔과 서버 비교 승인은 별도로 읽는다(설계 5장).
 
 final regionLocatorProvider = FutureProvider<GeoRegionLocator>(
   (ref) async =>
@@ -28,12 +27,7 @@ final scanStoreProvider = FutureProvider.family<ScanStore, String>((
   ref,
   userId,
 ) async {
-  final documents = await getApplicationDocumentsDirectory();
-  try {
-    await ScanStore.removeLegacySharedCache(documents);
-  } catch (_) {}
-  // Caches는 iOS가 저장 공간이 부족하면 비워 전체 스캔이 다시 일어난다
-  return ScanStore(await getApplicationSupportDirectory(), userId: userId);
+  return ScanStore(await openScanDirectory(), userId: userId);
 });
 
 // 처음 읽을 때 사진 권한을 묻는다. 권한이 없으면 AppError.photoPermission
@@ -64,46 +58,10 @@ final scanSnapshotProvider = FutureProvider.family<ScanSnapshot, String>(
       : ProviderContainer.defaultRetry(count, error),
 );
 
-final scanSyncProvider = Provider<ScanSync>(
-  (ref) => ScanSync(
-    ref.watch(photoDayRepositoryProvider),
-    ref.watch(sharedPreferencesProvider),
-  ),
-);
-
-// 사귄 날이 바뀌면(상대가 바꿔도) currentCoupleProvider가 다시 읽혀 다시 맞춘다
-final photoDaysSyncedProvider = FutureProvider<void>((ref) async {
-  final userId = ref.watch(sessionUserIdProvider);
-  final coupleFuture = ref.watch(currentCoupleProvider.future);
-  if (userId == null) return;
-  var cancelled = false;
-  ref.onDispose(() => cancelled = true);
-  final couple = await coupleFuture;
-  final startedOn = couple?.startedOn;
-  if (couple == null || startedOn == null || cancelled) return;
-  final sync = ref.watch(scanSyncProvider);
-  final snapshotFuture = ref.watch(scanSnapshotProvider(userId).future);
-  final snapshot = await snapshotFuture;
-  if (cancelled || !ref.mounted || ref.read(sessionUserIdProvider) != userId) {
-    return;
-  }
-  final latest = ref.read(currentCoupleProvider).unwrapPrevious().value;
-  if (latest?.id != couple.id || latest?.startedOn != startedOn) return;
-  (await sync.sync(
-    snapshot,
-    startedOn,
-    userId: userId,
-    coupleId: couple.id,
-  )).valueOrThrow;
-});
-
 final matchedDaysProvider = FutureProvider<List<PhotoDay>>((ref) async {
-  final userId = ref.watch(sessionUserIdProvider);
-  final synced = ref.watch(photoDaysSyncedProvider.future);
-  if (userId == null) return const [];
+  final coupleFuture = _coupleId(ref);
   final repository = ref.watch(tripRepositoryProvider);
-  await synced;
-  if (!ref.mounted) return const [];
+  if (await coupleFuture == null || !ref.mounted) return const [];
   return (await repository.matchedDays()).valueOrThrow;
 });
 

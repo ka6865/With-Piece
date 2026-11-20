@@ -1,7 +1,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
-select plan(22);
+select plan(25);
 insert into auth.users (id) values
  ('00000000-0000-0000-0000-0000000000a1'),
  ('00000000-0000-0000-0000-0000000000b1');
@@ -20,16 +20,17 @@ select lives_ok($$ select sync_photo_days('10000000-0000-0000-0000-000000000001'
  '기기 B가 다른 스냅샷을 동기화한다');
 select is((select count(*)::int from photo_day_shares), 1, '기기 A에서 승인한 원본과 승인을 보존한다');
 select results_eq('select day, photo_count from photo_days order by day',
- $$ values ('2026-10-03'::date,4), ('2026-10-04'::date,2) $$, '기존 승인 장수는 보존하고 미승인 삭제는 반영한다');
+ $$ values ('2026-10-03'::date,4) $$, '구버전 기기 스캔은 미승인 원본을 추가하지 않는다');
 select sync_photo_days('10000000-0000-0000-0000-000000000001', '[]');
 select is((select count(*)::int from photo_days), 1, '같은 기기의 전체 재스캔에서도 승인한 원본을 보존한다');
+select sync_photo_days('10000000-0000-0000-0000-000000000001', '[{"day":"2026-10-03","region_id":"32060","photo_count":1}]');
+select is((select photo_count from photo_days where day = '2026-10-03'), 4, '구버전 스캔은 승인한 장수를 덮어쓰지 못한다');
 select sync_photo_days('10000000-0000-0000-0000-000000000001', '[{"day":"2026-10-04","region_id":"32400","photo_count":2}]');
 select update_photo_day_shares('10000000-0000-0000-0000-000000000001', '[{"day":"2026-10-04","region_id":"32400","photo_count":2}]', '[]');
 -- 기기 A가 보지 못했던 기기 B의 승인을 남긴 채 기존 승인만 철회한다.
 select update_photo_day_shares('10000000-0000-0000-0000-000000000001', '[]', '[{"day":"2026-10-03","region_id":"32060"}]');
 select results_eq('select day from photo_day_shares order by day', $$ values ('2026-10-04'::date) $$, '다른 기기에서 나중에 승인한 기록은 수정하지 않는다');
-select sync_photo_days('10000000-0000-0000-0000-000000000001', '[]');
-select results_eq('select day from photo_days order by day', $$ values ('2026-10-04'::date) $$, '철회한 원본은 다음 스캔에서 제거한다');
+select results_eq('select day from photo_days order by day', $$ values ('2026-10-04'::date) $$, '마지막 승인을 철회하면 그 원본을 즉시 제거한다');
 select throws_ok($$ select sync_photo_days('10000000-0000-0000-0000-000000000099', '[]') $$,
  'P0001','no_active_couple','다른 커플에서 동기화하지 못한다');
 -- 기기 B의 동기화가 지운 미승인 원본을 기기 A가 자기 스냅샷 장수로 승인한다.
@@ -53,7 +54,7 @@ select set_started_on('2026-10-05');
 select lives_ok($$ select update_photo_day_shares('10000000-0000-0000-0000-000000000001', '[]', '[{"day":"2026-10-04","region_id":"32400"}]') $$,
  '기준일 이전의 오래된 승인 철회는 유효하다');
 select sync_photo_days('10000000-0000-0000-0000-000000000001', '[{"day":"2026-10-04","region_id":"32400","photo_count":2},{"day":"2026-10-05","region_id":"32060","photo_count":3}]');
-select results_eq('select day from photo_days', $$ values ('2026-10-05'::date) $$, '서버 최신 기준일 이전 원본은 클라이언트 날짜와 무관하게 삭제한다');
+select is((select count(*)::int from photo_days), 0, '구버전 스캔은 기준일 전후 어느 원본도 저장하지 않는다');
 select set_started_on('2026-01-01');
 select update_photo_day_shares('10000000-0000-0000-0000-000000000001', '[{"day":"2026-10-05","region_id":"32060","photo_count":3}]', '[]');
 select set_started_on('2026-10-06');
@@ -73,5 +74,26 @@ select throws_ok($$ select sync_photo_days('10000000-0000-0000-0000-000000000001
 reset role;
 select ok(not has_function_privilege('anon', 'public.sync_photo_days(uuid,jsonb)', 'EXECUTE')
  and not has_function_privilege('anon', 'public.update_photo_day_shares(uuid,jsonb,jsonb)', 'EXECUTE'), '익명 RPC 실행 금지');
+-- 관계가 삭제돼 참조가 사라지면 다른 관계가 쓰는 원본만 유지한다.
+insert into couples (id, user_a_id, user_b_id, started_on, status, archived_at) values
+ ('10000000-0000-0000-0000-000000000002',
+ '00000000-0000-0000-0000-0000000000a1',
+ '00000000-0000-0000-0000-0000000000b1', '2026-01-01', 'archived', now()),
+ ('10000000-0000-0000-0000-000000000003',
+ '00000000-0000-0000-0000-0000000000a1',
+ '00000000-0000-0000-0000-0000000000b1', '2026-01-01', 'archived', now());
+insert into photo_days (user_id, day, region_id, photo_count) values
+ ('00000000-0000-0000-0000-0000000000b1', '2026-10-11', '32060', 8);
+insert into photo_day_shares (couple_id, user_id, day, region_id) values
+ ('10000000-0000-0000-0000-000000000002',
+ '00000000-0000-0000-0000-0000000000b1', '2026-10-11', '32060'),
+ ('10000000-0000-0000-0000-000000000003',
+ '00000000-0000-0000-0000-0000000000b1', '2026-10-11', '32060');
+delete from couples where id = '10000000-0000-0000-0000-000000000002';
+select is((select count(*)::int from photo_days where day = '2026-10-11'), 1,
+  '다른 지난 관계에서 쓰는 원본은 관계 정리로 제거하지 않는다');
+delete from couples where id = '10000000-0000-0000-0000-000000000003';
+select is((select count(*)::int from photo_days where day = '2026-10-11'), 0,
+  '마지막 참조가 있던 지난 관계가 정리되면 집계도 삭제한다');
 select * from finish();
 rollback;

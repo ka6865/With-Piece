@@ -292,6 +292,8 @@ void main() {
   testWidgets('화면을 다시 열어도 실패한 업로드는 저장한 ID를 재사용하고 오래된 ID는 지운다', (tester) async {
     SharedPreferences.setMockInitialValues({
       'pending_photo_upload:stale': 'old-id 0',
+      'pending_photo_upload:5f5df66841e627be58b93c8fc20db1de7ef7c397a7195b451aed8d1000a088c2':
+          '73557da8-1a24-4c7f-a866-2aca16571075',
       'other': 'kept',
     });
     final prefs = await SharedPreferences.getInstance();
@@ -320,7 +322,7 @@ void main() {
 
     await open();
     final id = repo.calls.single.id;
-    expect(id, isNotNull);
+    expect(id, '73557da8-1a24-4c7f-a866-2aca16571075');
     expect(prefs.getKeys(), hasLength(2));
     expect(prefs.getKeys(), isNot(contains('pending_photo_upload:stale')));
     await tester.pumpWidget(const SizedBox());
