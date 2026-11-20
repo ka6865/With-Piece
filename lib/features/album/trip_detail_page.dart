@@ -17,7 +17,7 @@ import 'album_providers.dart';
 import 'comments.dart';
 import 'photo_grid.dart';
 
-// 여행 상세. 사진 더하기·지우기(내 사진만), 조각 보정, 제목, 표지(설계 8.4)
+// 여행 상세. 사진 추가·지우기(내 사진만), 조각 보정, 제목, 표지(설계 8.4)
 class TripDetailPage extends ConsumerWidget {
   const TripDetailPage({
     super.key,
@@ -148,6 +148,26 @@ class TripDetailPage extends ConsumerWidget {
                     );
                   },
                 ),
+              if (!readOnly && photos.any((p) => p.uploadedBy == me))
+                IconButton(
+                  tooltip: '사진 지우기',
+                  icon: const Icon(Icons.delete_outline),
+                  onPressed: () async {
+                    final deleted = await Navigator.of(context).push<bool>(
+                      MaterialPageRoute(
+                        builder: (_) => _DeletePhotosPage(
+                          photos: [
+                            for (final p in photos)
+                              if (p.uploadedBy == me) p,
+                          ],
+                        ),
+                      ),
+                    );
+                    if (deleted == true && userId != null) {
+                      ref.invalidate(couplePhotosProvider(userId));
+                    }
+                  },
+                ),
             ],
           ),
           const SizedBox(height: 16),
@@ -159,20 +179,6 @@ class TripDetailPage extends ConsumerWidget {
                     repo().setCover(trip.id, photo.id),
                     () => ref.invalidate(tripsProvider),
                   ),
-            trailingFor: (photo) => readOnly || photo.uploadedBy != me
-                ? null
-                : IconButton(
-                    tooltip: '사진 지우기',
-                    icon: const Icon(Icons.delete, color: Colors.white),
-                    onPressed: () => run(
-                      ref.read(photoRepositoryProvider).delete(photo),
-                      () {
-                        if (userId case final id?) {
-                          ref.invalidate(couplePhotosProvider(id));
-                        }
-                      },
-                    ),
-                  ),
           ),
           const SizedBox(height: 24),
           Text('방명록', style: Theme.of(context).textTheme.titleMedium),
@@ -182,7 +188,7 @@ class TripDetailPage extends ConsumerWidget {
             coupleId: archived ?? scope?.coupleId,
             tripId: trip.id,
           ),
-          // 사진 더하기 버튼에 마지막 글이 가리지 않게 한다
+          // 사진 추가하기 버튼에 마지막 글이 가리지 않게 한다
           const SizedBox(height: 72),
         ],
       ),
@@ -190,7 +196,7 @@ class TripDetailPage extends ConsumerWidget {
           ? null
           : FloatingActionButton.extended(
               icon: const Icon(Icons.add_photo_alternate),
-              label: const Text('사진 더하기'),
+              label: const Text('사진 추가하기'),
               onPressed: () async {
                 final coupleState = ref.read(scopedCurrentCoupleProvider);
                 final coupleId = coupleState.isLoading || coupleState.hasError
@@ -237,4 +243,124 @@ Future<String?> _askTitle(BuildContext context, String current) {
       ],
     ),
   ).whenComplete(controller.dispose);
+}
+
+// 내가 올린 사진을 하나 이상 골라 확인을 받고 지운다. 지운 것이 있으면 true로 닫는다
+class _DeletePhotosPage extends ConsumerStatefulWidget {
+  const _DeletePhotosPage({required this.photos});
+
+  final List<PhotoRecord> photos;
+
+  @override
+  ConsumerState<_DeletePhotosPage> createState() => _DeletePhotosPageState();
+}
+
+class _DeletePhotosPageState extends ConsumerState<_DeletePhotosPage> {
+  final _selected = <String>{};
+  bool _deleting = false;
+  // 고를 때마다 다시 그리므로 서명 URL은 한 번만 받는다
+  late final _urls = ref.read(signedUrlCacheProvider).urls([
+    for (final p in widget.photos) p.thumbPath,
+  ]);
+
+  Future<void> _delete() async {
+    final count = _selected.length;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('사진 지우기'),
+        content: Text('사진 $count장을 정말 지우시겠습니까?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('취소'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('지우기'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    setState(() => _deleting = true);
+    final repo = ref.read(photoRepositoryProvider);
+    var failed = 0;
+    for (final photo in widget.photos) {
+      if (!_selected.contains(photo.id)) continue;
+      if (await repo.delete(photo) is Err) failed++;
+    }
+    if (!mounted) return;
+    if (failed > 0) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('사진 $failed장을 지우지 못했어요')));
+    }
+    Navigator.pop(context, failed < count);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          _selected.isEmpty ? '지울 사진 고르기' : '${_selected.length}장 선택',
+        ),
+        actions: [
+          TextButton(
+            onPressed: _deleting || _selected.isEmpty ? null : _delete,
+            child: const Text('지우기'),
+          ),
+        ],
+      ),
+      body: FutureBuilder<Map<String, String>>(
+        future: _urls,
+        builder: (context, urls) => GridView.count(
+          padding: const EdgeInsets.all(4),
+          crossAxisCount: 3,
+          mainAxisSpacing: 4,
+          crossAxisSpacing: 4,
+          children: [
+            for (final photo in widget.photos)
+              Semantics(
+                selected: _selected.contains(photo.id),
+                label: '사진 고르기',
+                child: GestureDetector(
+                  onTap: _deleting
+                      ? null
+                      : () => setState(() {
+                          if (!_selected.remove(photo.id)) {
+                            _selected.add(photo.id);
+                          }
+                        }),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      RemoteImage(url: urls.data?[photo.thumbPath]),
+                      if (_selected.contains(photo.id))
+                        ColoredBox(
+                          color: scheme.primary.withValues(alpha: 0.3),
+                        ),
+                      Align(
+                        alignment: Alignment.topRight,
+                        child: Padding(
+                          padding: const EdgeInsets.all(4),
+                          child: Icon(
+                            _selected.contains(photo.id)
+                                ? Icons.check_circle
+                                : Icons.radio_button_unchecked,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 }

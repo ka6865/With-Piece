@@ -46,8 +46,8 @@ select throws_ok($$ update region_covers set photo_id = '40000000-0000-0000-0000
   where region_id = '32060' $$,
   '42501', null, '다른 커플 사진은 대표 사진이 되지 못한다');
 select throws_ok($$ insert into region_covers (couple_id, region_id, photo_id, scale, center_x, center_y)
-  values ('10000000-0000-0000-0000-000000000001', '37020', '40000000-0000-0000-0000-000000000002', 0.5, 0.5, 0.5) $$,
-  '23514', null, '조각을 다 덮지 못하는 배율은 거부한다');
+  values ('10000000-0000-0000-0000-000000000001', '37020', '40000000-0000-0000-0000-000000000002', 0.2, 0.5, 0.5) $$,
+  '23514', null, '0.25배보다 작은 배율은 거부한다');
 
 -- 상대(b)도 바꿀 수 있고 나중 것이 남는다
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000b1","role":"authenticated"}', true);

@@ -95,7 +95,7 @@ void main() {
     expect(find.text('경주시'), findsWidgets);
     expect(find.byTooltip('사진 지우기'), findsNothing);
     expect(find.byTooltip('제목 바꾸기'), findsNothing);
-    expect(find.text('사진 더하기'), findsNothing);
+    expect(find.text('사진 추가하기'), findsNothing);
     expect(find.text('조각 추가'), findsNothing);
   });
 

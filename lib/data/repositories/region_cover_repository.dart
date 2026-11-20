@@ -11,15 +11,18 @@ class RegionCover {
     this.scale = 1,
     this.centerX = 0.5,
     this.centerY = 0.5,
+    this.blackBackground = false,
   });
 
   final String regionId;
   final String photoId;
-  // 조각 bbox를 덮는 최소 배율 대비 배수(1 이상)
+  // 조각 bbox를 덮는 최소 배율 대비 배수(0.25~8). 1 미만이면 사진이 조각 안에 다 보인다
   final double scale;
-  // 조각 bbox 중심에 오는 사진 위 점(너비·높이 대비 0~1)
+  // 조각 bbox 중심에 오는 사진 위 점(너비·높이 대비, 축소하면 0~1을 벗어난다)
   final double centerX;
   final double centerY;
+  // 축소해 생긴 빈 곳을 검은색으로 칠한다. 아니면 흰색
+  final bool blackBackground;
 }
 
 class RegionCoverRepository {
@@ -27,23 +30,27 @@ class RegionCoverRepository {
 
   final SupabaseClient _client;
 
-  Future<Result<Map<String, RegionCover>>> covers(String coupleId) =>
-      guard(() async {
-        final rows = await _client
-            .from('region_covers')
-            .select('region_id, photo_id, scale, center_x, center_y')
-            .eq('couple_id', coupleId);
-        return {
-          for (final row in rows)
-            row['region_id'] as String: RegionCover(
-              regionId: row['region_id'] as String,
-              photoId: row['photo_id'] as String,
-              scale: (row['scale'] as num).toDouble(),
-              centerX: (row['center_x'] as num).toDouble(),
-              centerY: (row['center_y'] as num).toDouble(),
-            ),
-        };
-      });
+  Future<Result<Map<String, RegionCover>>> covers(String coupleId) => guard(
+    () async {
+      final rows = await _client
+          .from('region_covers')
+          .select(
+            'region_id, photo_id, scale, center_x, center_y, black_background',
+          )
+          .eq('couple_id', coupleId);
+      return {
+        for (final row in rows)
+          row['region_id'] as String: RegionCover(
+            regionId: row['region_id'] as String,
+            photoId: row['photo_id'] as String,
+            scale: (row['scale'] as num).toDouble(),
+            centerX: (row['center_x'] as num).toDouble(),
+            centerY: (row['center_y'] as num).toDouble(),
+            blackBackground: row['black_background'] as bool,
+          ),
+      };
+    },
+  );
 
   // 두 사람 누구나 바꾸고 나중 것이 남는다. upsert는 충돌 시 커플·조각 칸까지
   // 고치려 해 그 칸의 수정 권한이 없어 거부된다. 고칠 행이 없을 때만 넣는다
@@ -54,6 +61,7 @@ class RegionCoverRepository {
           'scale': cover.scale,
           'center_x': cover.centerX,
           'center_y': cover.centerY,
+          'black_background': cover.blackBackground,
         };
         Future<bool> update() async =>
             (await _client

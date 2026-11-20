@@ -159,7 +159,8 @@ class CoverPickerPage extends ConsumerWidget {
   }
 }
 
-// 조각 모양 틀 안에서 사진을 확대·이동해 구도를 맞춘다. 사진은 언제나 조각을 덮는다
+// 조각 모양 틀 안에서 사진을 확대·축소·이동해 구도를 맞춘다. 축소해 생긴 빈 곳은
+// 흰색이나 검은색으로 칠한다
 class CoverCropPage extends ConsumerStatefulWidget {
   const CoverCropPage({super.key, required this.regionId, required this.photo});
 
@@ -175,6 +176,7 @@ class _CoverCropPageState extends ConsumerState<CoverCropPage> {
   Rect? _placed;
   Rect? _start;
   Offset? _startFocal;
+  bool? _black;
   bool _saving = false;
 
   Size get _image =>
@@ -213,6 +215,7 @@ class _CoverCropPageState extends ConsumerState<CoverCropPage> {
             bounds: bounds,
             image: _image,
             placed: placed,
+            blackBackground: _black ?? false,
           ),
         );
     if (!mounted) return;
@@ -234,6 +237,7 @@ class _CoverCropPageState extends ConsumerState<CoverCropPage> {
         ? null
         : regionShapeAssetOf(regions, widget.regionId);
     final saved = ref.watch(regionCoversProvider).value?[widget.regionId];
+    final same = saved?.photoId == widget.photo.id;
     final url = ref.watch(_fullUrlProvider(widget.photo.fullPath)).value;
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -249,11 +253,13 @@ class _CoverCropPageState extends ConsumerState<CoverCropPage> {
             bounds: bounds,
             image: _image,
             // 이미 고른 사진이면 그 구도에서 시작한다
-            scale: saved?.photoId == widget.photo.id ? saved!.scale : 1,
-            centerX: saved?.photoId == widget.photo.id ? saved!.centerX : 0.5,
-            centerY: saved?.photoId == widget.photo.id ? saved!.centerY : 0.5,
+            scale: same ? saved!.scale : 1,
+            centerX: same ? saved!.centerX : 0.5,
+            centerY: same ? saved!.centerY : 0.5,
           );
         }
+        _black ??= same && saved!.blackBackground;
+        final black = _black!;
         final placed = _placed;
         return Scaffold(
           appBar: AppBar(
@@ -273,7 +279,7 @@ class _CoverCropPageState extends ConsumerState<CoverCropPage> {
                   children: [
                     const Padding(
                       padding: EdgeInsets.all(16),
-                      child: Text('두 손가락으로 확대하고 끌어서 조각에 보일 부분을 맞춰 주세요'),
+                      child: Text('두 손가락으로 확대·축소하고 끌어서 조각에 보일 부분을 맞춰 주세요'),
                     ),
                     Center(
                       child: GestureDetector(
@@ -306,6 +312,12 @@ class _CoverCropPageState extends ConsumerState<CoverCropPage> {
                             child: Stack(
                               children: [
                                 Positioned.fromRect(
+                                  rect: bounds,
+                                  child: ColoredBox(
+                                    color: black ? Colors.black : Colors.white,
+                                  ),
+                                ),
+                                Positioned.fromRect(
                                   rect: placed,
                                   child: RemoteImage(url: url),
                                 ),
@@ -325,6 +337,18 @@ class _CoverCropPageState extends ConsumerState<CoverCropPage> {
                             ),
                           ),
                         ),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: SegmentedButton<bool>(
+                        segments: const [
+                          ButtonSegment(value: false, label: Text('흰 여백')),
+                          ButtonSegment(value: true, label: Text('검은 여백')),
+                        ],
+                        selected: {black},
+                        onSelectionChanged: (value) =>
+                            setState(() => _black = value.first),
                       ),
                     ),
                   ],

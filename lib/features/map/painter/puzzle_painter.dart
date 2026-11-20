@@ -150,6 +150,13 @@ class PuzzlePainter extends CustomPainter {
     final src = Size(image.width.toDouble(), image.height.toDouble());
     canvas.save();
     canvas.clipPath(clip);
+    if (cover.cover.scale < 1) {
+      canvas.drawPath(
+        clip,
+        Paint()
+          ..color = cover.cover.blackBackground ? Colors.black : Colors.white,
+      );
+    }
     canvas.drawImageRect(
       image,
       Offset.zero & src,
