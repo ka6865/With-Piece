@@ -10,16 +10,10 @@ import 'comments.dart';
 
 // 썸네일 격자. 서명 URL은 이 화면의 사진만 한 번에 묶어 받는다(설계 8.2)
 class PhotoGrid extends ConsumerWidget {
-  const PhotoGrid({
-    super.key,
-    required this.photos,
-    this.onLongPress,
-    this.trailingFor,
-  });
+  const PhotoGrid({super.key, required this.photos, this.onLongPress});
 
   final List<PhotoRecord> photos;
   final void Function(PhotoRecord photo)? onLongPress;
-  final Widget? Function(PhotoRecord photo)? trailingFor;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -58,14 +52,7 @@ class PhotoGrid extends ConsumerWidget {
                   : () => onLongPress!(photo),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(10),
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    RemoteImage(url: snapshot.data?[photo.thumbPath]),
-                    if (trailingFor?.call(photo) case final trailing?)
-                      Align(alignment: Alignment.topRight, child: trailing),
-                  ],
-                ),
+                child: RemoteImage(url: snapshot.data?[photo.thumbPath]),
               ),
             ),
         ],

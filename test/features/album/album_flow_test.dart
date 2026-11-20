@@ -116,6 +116,24 @@ void main() {
     await pumpApp(tester, '/trips/t3');
     expect(find.text('속초시'), findsWidgets);
     expect(find.byTooltip('사진 지우기'), findsOneWidget);
+    expect(find.text('사진 추가하기'), findsOneWidget);
+  });
+
+  testWidgets('휴지통에서 내 사진만 골라 확인을 받고 지운다', (tester) async {
+    await pumpApp(tester, '/trips/t3');
+    await tester.tap(find.byTooltip('사진 지우기'));
+    await tester.pumpAndSettle();
+    // t3에서 내가 올린 사진은 p1 하나다
+    expect(find.bySemanticsLabel('사진 고르기'), findsOneWidget);
+    await tester.tap(find.bySemanticsLabel('사진 고르기'));
+    await tester.pump();
+    expect(find.text('1장 선택'), findsOneWidget);
+    await tester.tap(find.widgetWithText(TextButton, '지우기'));
+    await tester.pumpAndSettle();
+    expect(find.text('사진 1장을 정말 지우시겠습니까?'), findsOneWidget);
+    await tester.tap(find.text('취소'));
+    await tester.pumpAndSettle();
+    expect(find.text('1장 선택'), findsOneWidget);
   });
 
   testWidgets('칠해진 조각을 탭하면 여행이 여럿일 때 목록에서 고른다', (tester) async {
