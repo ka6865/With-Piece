@@ -133,6 +133,9 @@ class _PhotoUploadPageState extends ConsumerState<PhotoUploadPage> {
   static const _pendingPrefix = 'pending_photo_upload:';
   // 이 기간 안에 다시 올리면 같은 사진 ID를 써서 중복 행을 막는다
   static const _pendingTtl = Duration(days: 7);
+  static final _legacyPendingId = RegExp(
+    r'^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$',
+  );
   final _prefetchQueue = <String>{};
   final _prefetched = <String>{};
   final _prefetching = <String, PMCancelToken>{};
@@ -173,7 +176,15 @@ class _PhotoUploadPageState extends ConsumerState<PhotoUploadPage> {
     final now = DateTime.now().millisecondsSinceEpoch;
     for (final key in prefs.getKeys()) {
       if (!key.startsWith(_pendingPrefix)) continue;
-      final savedAt = int.tryParse(prefs.getString(key)?.split(' ').last ?? '');
+      final stored = prefs.getString(key) ?? '';
+      if (_legacyPendingId.hasMatch(stored)) {
+        // 예전 빌드가 이미 서버에 보낸 사진은 기존 ID로 다시 확인한다.
+        unawaited(
+          prefs.setString(key, '$stored $now').catchError((Object _) => false),
+        );
+        continue;
+      }
+      final savedAt = int.tryParse(stored.split(' ').last);
       if (savedAt == null || now - savedAt > _pendingTtl.inMilliseconds) {
         unawaited(prefs.remove(key).catchError((Object _) => false));
       }
