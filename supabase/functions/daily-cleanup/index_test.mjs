@@ -17,6 +17,7 @@ function handler({ storageFails = false, authFails = false, finalizeFails = fals
   const client = {
     rpc: async (name, args) => {
       calls.push(name === 'finalize_expired_user' ? `finalize:${args.p_user_id}` : name);
+      if (name === 'cleanup_token_valid') return { data: args.p_token === 'vault-token', error: null };
       return { data: name === 'purge_expired_users'
         ? accounts
         : name === 'orphan_photo_paths' ? ['orphan.heic'] : null,
@@ -45,8 +46,10 @@ function handler({ storageFails = false, authFails = false, finalizeFails = fals
     Response,
     console: { error: (line) => logs.push(JSON.parse(line)) },
   });
+  // true면 서비스 키, 문자열이면 그 토큰, false면 헤더 없이 부른다
   return { calls, logs, run: (authorized = true) => serve(new Request('http://local', {
-    headers: authorized ? { Authorization: 'Bearer secret' } : {},
+    headers: authorized === false ? {}
+      : { Authorization: `Bearer ${authorized === true ? 'secret' : authorized}` },
   })) };
 }
 
@@ -55,6 +58,16 @@ test('서비스 키가 없으면 데이터에 접근하지 않는다', async () 
   assert.equal((await h.run(false)).status, 401);
   assert.deepEqual(h.calls, []);
   assert.deepEqual(h.logs, []);
+});
+test('일정 작업이 보낸 Vault 토큰이 맞으면 정리한다', async () => {
+  const h = handler();
+  assert.equal((await h.run('vault-token')).status, 200);
+  assert.ok(h.calls.includes('orphan_photo_paths'));
+});
+test('토큰이 틀리면 토큰 확인 말고는 아무것도 하지 않는다', async () => {
+  const h = handler();
+  assert.equal((await h.run('wrong')).status, 401);
+  assert.deepEqual(h.calls, ['cleanup_token_valid']);
 });
 test('파일 삭제 후 DB 정리를 확정하고 Auth를 삭제한다', async () => {
   const h = handler();
