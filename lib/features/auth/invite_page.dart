@@ -69,6 +69,14 @@ class _InvitePageState extends ConsumerState<InvitePage> {
     ref.invalidate(myInviteProvider);
   }
 
+  // 코드를 누군가에게 잘못 알렸을 때 옛 코드를 바로 무효로 만든다
+  Future<void> _regenerateInvite() async {
+    final result = await ref.read(coupleRepositoryProvider).regenerateInvite();
+    if (!mounted) return;
+    _toast(result is Err ? '새 코드를 받지 못했어요' : '새 코드를 받았어요. 이전 코드는 더 이상 쓸 수 없어요');
+    ref.invalidate(myInviteProvider);
+  }
+
   @override
   Widget build(BuildContext context) {
     final userId = ref.watch(sessionUserIdProvider);
@@ -127,6 +135,12 @@ class _InvitePageState extends ConsumerState<InvitePage> {
                             ClipboardData(text: invite.code),
                           ),
                         ),
+                        const SizedBox(width: 8),
+                        IconButton.filledTonal(
+                          tooltip: '새 코드 받기',
+                          icon: const Icon(Icons.refresh),
+                          onPressed: _regenerateInvite,
+                        ),
                       ],
                     ),
                     AsyncData() => OutlinedButton(
@@ -136,6 +150,12 @@ class _InvitePageState extends ConsumerState<InvitePage> {
                     AsyncError() => const Text('초대 코드를 불러오지 못했어요'),
                     _ => const LinearProgressIndicator(),
                   },
+                  const SizedBox(height: 8),
+                  Text(
+                    '코드는 만든 뒤 3일 동안 한 번만 쓸 수 있어요. '
+                    '연결하거나 끊으면 남은 코드는 사라져요.',
+                    style: theme.textTheme.bodySmall,
+                  ),
                 ],
               ),
             ),

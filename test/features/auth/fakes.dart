@@ -57,12 +57,27 @@ class FakeCoupleRepository implements CoupleRepository {
     return const Ok(JoinOutcome.joined);
   }
 
-  @override
-  Future<Result<Invite>> createInvite() async =>
-      Ok(Invite(code: 'MYCODE2345', expiresAt: DateTime(2026, 12, 1)));
+  Invite? invite;
+  int regenerations = 0;
 
   @override
-  Future<Result<Invite?>> myInvite() async => const Ok(null);
+  Future<Result<Invite>> createInvite() async => Ok(
+    invite ??= Invite(code: 'MYCODE2345', expiresAt: DateTime(2026, 12, 1)),
+  );
+
+  @override
+  Future<Result<Invite>> regenerateInvite() async {
+    regenerations++;
+    return Ok(
+      invite = Invite(
+        code: 'NEWCODE$regenerations'.padRight(10, 'Z'),
+        expiresAt: DateTime(2026, 12, 1),
+      ),
+    );
+  }
+
+  @override
+  Future<Result<Invite?>> myInvite() async => Ok(invite);
 
   @override
   Future<Result<JoinOutcome>> join(String code) async {
