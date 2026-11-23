@@ -17,6 +17,7 @@ import 'album_providers.dart';
 import 'comments.dart';
 import 'photo_grid.dart';
 import 'pinch_columns.dart';
+import '../../core/ui_confirm.dart';
 
 // 여행 상세. 사진 추가·지우기(내 사진만), 조각 보정, 제목, 표지(설계 8.4)
 class TripDetailPage extends ConsumerWidget {
@@ -98,6 +99,39 @@ class TripDetailPage extends ConsumerWidget {
                 );
               },
             ),
+          if (!readOnly)
+            IconButton(
+              tooltip: '여행 지우기',
+              icon: const Icon(Icons.delete_forever_outlined),
+              onPressed: () async {
+                // 상대 사진까지 지운다(설계 8.4, 2026-11-23 사용자 결정)
+                final ok = await confirmAction(
+                  context,
+                  title: '이 여행을 지울까요?',
+                  message:
+                      '두 사람이 올린 사진 ${photos.length}장과 방명록이 모두 지워져요. '
+                      '되돌릴 수 없어요.',
+                  action: '지우기',
+                );
+                if (!ok || !context.mounted) return;
+                final result = await repo().deleteTrip(trip.id, [
+                  for (final p in photos)
+                    if (p.uploadedBy == me) p,
+                ]);
+                if (!context.mounted) return;
+                if (result is Err) {
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(const SnackBar(content: Text('여행을 지우지 못했어요')));
+                  return;
+                }
+                await Navigator.of(context).maybePop();
+                ref.invalidate(tripsProvider);
+                if (userId != null) {
+                  ref.invalidate(couplePhotosProvider(userId));
+                }
+              },
+            ),
         ],
       ),
       body: ListView(
@@ -119,10 +153,19 @@ class TripDetailPage extends ConsumerWidget {
                   // 조각이 하나뿐이면 지울 수 없다. 여행은 조각을 하나 이상 가진다
                   onDeleted: readOnly || trip.regionIds.length < 2
                       ? null
-                      : () => run(
-                          repo().removeRegion(trip.id, id),
-                          () => ref.invalidate(tripsProvider),
-                        ),
+                      : () async {
+                          final ok = await confirmAction(
+                            context,
+                            title: '${names[id] ?? '이 조각'}을 여행에서 뺄까요?',
+                            message: '여행의 사진은 지워지지 않아요.',
+                            action: '빼기',
+                          );
+                          if (!ok) return;
+                          await run(
+                            repo().removeRegion(trip.id, id),
+                            () => ref.invalidate(tripsProvider),
+                          );
+                        },
                 ),
               if (!readOnly)
                 ActionChip(

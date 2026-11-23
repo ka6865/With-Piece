@@ -6,6 +6,7 @@ import '../../core/supabase/supabase_providers.dart';
 import '../../data/repositories/comment_repository.dart';
 import '../../data/repositories/repository_providers.dart';
 import '../auth/auth_state.dart';
+import '../../core/ui_confirm.dart';
 
 // 방명록과 사진 댓글(설계 6.2). 상대 댓글은 Realtime 알림으로 다시 읽고, 푸시 전에는
 // 앨범의 "새 댓글" 표시로만 알린다
@@ -176,6 +177,13 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
       case 'edit':
         await _edit(comment);
       case 'delete':
+        final ok = await confirmAction(
+          context,
+          title: '이 글을 지울까요?',
+          message: '지운 글은 되돌릴 수 없어요.',
+          action: '지우기',
+        );
+        if (!ok || !mounted) return;
         await _run(
           ref.read(commentRepositoryProvider).delete(widget.kind, comment.id),
         );

@@ -5,6 +5,7 @@ import '../../features/scan/home_regions.dart';
 import '../../features/scan/photo_days.dart';
 import '../../features/scan/trip_candidates.dart';
 import 'fetch_all.dart';
+import 'photo_repository.dart';
 
 enum TripStatus { confirmed, dismissed }
 
@@ -181,6 +182,24 @@ class TripRepository {
         .eq('trip_id', tripId)
         .eq('region_id', regionId),
   );
+
+  // 여행을 상대 사진까지 통째로 지운다(설계 8.4). 서버가 행을 지운 뒤 내 사진 파일을 바로
+  // 지운다. 파일 삭제가 실패하거나 상대 파일이면 정리 작업이 지운다(설계 8.3)
+  Future<Result<void>> deleteTrip(
+    String tripId,
+    Iterable<PhotoRecord> myPhotos,
+  ) => guard(() async {
+    await _client.rpc('delete_trip', params: {'p_trip_id': tripId});
+    final paths = [
+      for (final p in myPhotos) ...[p.fullPath, p.thumbPath],
+    ];
+    if (paths.isEmpty) return;
+    try {
+      await _client.storage.from(PhotoRepository.bucket).remove(paths);
+    } on StorageException {
+      // 행은 이미 지워졌다. 남은 파일은 정리 작업이 지운다
+    }
+  });
 
   Future<Result<void>> rename(String tripId, String title) => guard(
     () => _client.from('trips').update({'title': title}).eq('id', tripId),

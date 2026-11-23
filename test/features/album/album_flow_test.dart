@@ -23,6 +23,7 @@ import 'package:woori_piece/map_data/map_asset.dart';
 import 'package:woori_piece/map_data/map_asset_loader.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:woori_piece/data/repositories/repository_providers.dart';
+import '../trip/fakes.dart';
 
 final provinces = MapAsset.parse(
   File('assets/map/provinces_v1.json').readAsStringSync(),
@@ -64,7 +65,12 @@ final trips = [
   trip('also', '속초시 다시', 5, ['32060']),
 ];
 
-Future<void> pumpApp(WidgetTester tester, String location) async {
+Future<void> pumpApp(
+  WidgetTester tester,
+  String location, {
+  TripRepository? tripRepository,
+  List<Trip>? tripList,
+}) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -78,7 +84,9 @@ Future<void> pumpApp(WidgetTester tester, String location) async {
           (ref) async => const Couple(id: 'c1', partnerId: 'p'),
         ),
         sessionUserIdProvider.overrideWithValue('me'),
-        tripsProvider.overrideWith((ref) async => trips),
+        if (tripRepository != null)
+          tripRepositoryProvider.overrideWithValue(tripRepository),
+        tripsProvider.overrideWith((ref) async => tripList ?? trips),
         homeRegionIdsProvider.overrideWith((ref) async => const {}),
         tripCandidatesProvider.overrideWith((ref) async => const []),
         couplePhotosProvider('me').overrideWith(
@@ -145,6 +153,55 @@ void main() {
     await tester.tap(find.text('취소'));
     await tester.pumpAndSettle();
     expect(find.text('1장 선택'), findsOneWidget);
+  });
+
+  testWidgets('여행을 지우면 상대 사진까지 지워진다고 묻고, 지운 뒤 앨범으로 돌아간다', (tester) async {
+    final repo = FakeTripRepository();
+    // 2열 격자가 여행 카드를 모두 그리도록 화면을 세로로 길게 둔다
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await pumpApp(tester, '/album', tripRepository: repo);
+    await tester.tap(find.text('속초시'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('여행 지우기'));
+    await tester.pumpAndSettle();
+    // t3에는 내 사진 p1과 상대 사진 p2가 있다
+    expect(find.textContaining('두 사람이 올린 사진 2장'), findsOneWidget);
+    await tester.tap(find.text('취소'));
+    await tester.pumpAndSettle();
+    expect(repo.deletedTrips, isEmpty);
+    await tester.tap(find.byTooltip('여행 지우기'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(TextButton, '지우기'));
+    await tester.pumpAndSettle();
+    expect(repo.deletedTrips, ['t3']);
+    // 내 파일만 바로 지운다. 상대 파일은 정리 작업이 지운다
+    expect(repo.deletedFiles, ['p1']);
+    expect(find.byKey(const Key('trip-detail')), findsNothing);
+  });
+
+  testWidgets('여행에서 조각을 빼기 전에 한 번 더 묻는다', (tester) async {
+    final repo = FakeTripRepository();
+    await pumpApp(
+      tester,
+      '/trips/two',
+      tripRepository: repo,
+      tripList: [
+        trip('two', '강릉과 속초', 7, ['32030', '32060']),
+      ],
+    );
+    await tester.tap(find.byIcon(Icons.clear).first);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('여행에서 뺄까요?'), findsOneWidget);
+    await tester.tap(find.text('취소'));
+    await tester.pumpAndSettle();
+    expect(repo.removed, isEmpty);
+    await tester.tap(find.byIcon(Icons.clear).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(TextButton, '빼기'));
+    await tester.pumpAndSettle();
+    expect(repo.removed, hasLength(1));
   });
 
   testWidgets('칠해진 조각을 탭하면 여행이 여럿일 때 목록에서 고른다', (tester) async {
