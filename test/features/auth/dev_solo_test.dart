@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:woori_piece/core/supabase/supabase_providers.dart';
 import 'package:woori_piece/core/dev_flags.dart';
 import 'package:woori_piece/data/repositories/repository_providers.dart';
 import 'package:woori_piece/features/auth/invite_page.dart';
+import 'package:woori_piece/features/guide/guide.dart';
 
 import 'fakes.dart';
 
@@ -13,9 +15,12 @@ Future<FakeCoupleRepository> pump(
   required bool devSolo,
 }) async {
   final couple = FakeCoupleRepository();
+  SharedPreferences.setMockInitialValues({IntroPage.seenKey: true});
+  final prefs = await SharedPreferences.getInstance();
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        sharedPreferencesProvider.overrideWithValue(prefs),
         sessionUserIdProvider.overrideWithValue('me'),
         devSoloEnabledProvider.overrideWithValue(devSolo),
         coupleRepositoryProvider.overrideWithValue(couple),

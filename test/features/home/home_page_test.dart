@@ -168,6 +168,13 @@ void main() {
     expect(find.byType(MiniPuzzleMap), findsNothing);
   });
 
+  testWidgets('홈의 ?를 누르면 홈 도움말을 보여준다', (tester) async {
+    await pumpApp(tester);
+    await tester.tap(find.byTooltip('도움말'));
+    await tester.pumpAndSettle();
+    expect(find.text('홈 도움말'), findsOneWidget);
+  });
+
   testWidgets('우리의 조각 카드를 누르면 지도 탭으로 간다', (tester) async {
     await pumpApp(tester);
     await tester.tap(find.text('우리의 조각'));

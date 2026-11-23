@@ -19,6 +19,7 @@ import '../trip/trip_candidates_page.dart';
 import '../trip/trip_discovery_banner.dart';
 import 'couple_days.dart';
 import 'rewind_page.dart';
+import '../guide/guide.dart';
 
 // 커플 상태의 첫 화면. 두 사람과 함께한 날, 채운 조각, 최근 여행을 모아 본다
 // (커플 디자인 4.2)
@@ -133,6 +134,7 @@ class _Header extends StatelessWidget {
             offset: const Offset(-10, 0),
             child: _Avatar(initialOf(couple.partnerName, '너')),
           ),
+          const HelpButton(topic: HelpTopic.home),
         ],
       ),
     );
