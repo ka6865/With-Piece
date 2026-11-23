@@ -171,7 +171,9 @@ void main() {
   testWidgets('홈의 ?를 누르면 홈 도움말을 보여준다', (tester) async {
     await pumpApp(tester);
     await tester.tap(find.byTooltip('도움말'));
-    await tester.pumpAndSettle();
+    // 도움말 그림은 되풀이 애니메이션이라 가라앉지 않는다
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
     expect(find.text('홈 도움말'), findsOneWidget);
   });
 

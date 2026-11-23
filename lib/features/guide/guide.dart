@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'help_art.dart';
+
 // 처음 쓰는 사람을 위한 안내(2026-11-23 설계 ④). 연결 전에는 소개 카드, 연결 뒤에는
 // 화면마다 ? 도움말이다. 서버를 쓰지 않는다
 
@@ -37,31 +39,36 @@ const introCards = <GuideCard>[
   ),
 ];
 
+typedef HelpStep = ({HelpArt art, String text});
+
 enum HelpTopic {
   home('홈', [
-    '함께한 날과 지금까지 채운 조각 수를 보여줘요.',
-    '"우리의 조각" 카드를 누르면 지도로 가요.',
-    '새 여행 후보가 생기면 여기서 알려줘요. 확인하면 조각이 채워져요.',
+    (art: HelpArt.together, text: '함께한 날과 지금까지 채운 조각 수를 보여줘요.'),
+    (art: HelpArt.piecesCard, text: '"우리의 조각" 카드를 누르면 지도로 가요.'),
+    (art: HelpArt.discovery, text: '새 여행 후보가 생기면 홈에서 알려줘요. 확인하면 그곳 조각이 채워져요.'),
   ]),
   map('지도', [
-    '시도를 누르면 그 안의 시군구 조각이 보여요.',
-    '채운 조각을 누르면 그곳 사진을, 빈 조각을 누르면 여행을 직접 만들 수 있어요.',
-    '조각을 길게 누르면 생활권과 여행지를 바꿀 수 있어요.',
-    '두 손가락으로 지도를 확대·축소해요.',
+    (art: HelpArt.provinceTap, text: '시도를 누르면 그 안의 시군구 조각이 보여요.'),
+    (
+      art: HelpArt.pieceTap,
+      text: '채운 조각을 누르면 그곳 사진을, 빈 조각을 누르면 여행을 직접 만들 수 있어요.',
+    ),
+    (art: HelpArt.pieceLongPress, text: '조각을 길게 누르면 생활권과 여행지를 바꿀 수 있어요.'),
+    (art: HelpArt.mapPinch, text: '두 손가락을 벌리거나 모아 지도를 확대·축소해요.'),
   ]),
   album('앨범', [
-    '여행별로 두 사람의 사진을 모아 봐요.',
-    '사진을 누르면 크게 보고, 사진 목록은 두 손가락으로 칸 크기를 바꿀 수 있어요.',
-    '사진을 고를 때 길게 누르면 크게 보며 고를 수 있어요.',
+    (art: HelpArt.tripList, text: '여행별로 두 사람의 사진을 모아 봐요. 사진을 누르면 크게 볼 수 있어요.'),
+    (art: HelpArt.gridPinch, text: '사진 목록에서 두 손가락을 벌리면 사진이 커지고, 모으면 작아져요.'),
+    (art: HelpArt.photoLongPress, text: '사진을 고를 때 길게 누르면 크게 보며 고를 수 있어요.'),
   ]);
 
-  const HelpTopic(this.title, this.lines);
+  const HelpTopic(this.title, this.steps);
 
   final String title;
-  final List<String> lines;
+  final List<HelpStep> steps;
 }
 
-// 화면 오른쪽 위의 ? 버튼. 누르면 그 화면 설명을 아래에서 짧게 보여준다
+// 화면 오른쪽 위의 ? 버튼. 누르면 그 화면 설명을 그림 카드로 넘겨 보여준다
 class HelpButton extends StatelessWidget {
   const HelpButton({super.key, required this.topic});
 
@@ -74,29 +81,103 @@ class HelpButton extends StatelessWidget {
     onPressed: () => showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '${topic.title} 도움말',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              const SizedBox(height: 12),
-              for (final line in topic.lines)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Text('· $line'),
-                ),
-            ],
-          ),
-        ),
-      ),
+      isScrollControlled: true,
+      builder: (_) => _HelpSheet(topic: topic),
     ),
   );
+}
+
+class _HelpSheet extends StatefulWidget {
+  const _HelpSheet({required this.topic});
+
+  final HelpTopic topic;
+
+  @override
+  State<_HelpSheet> createState() => _HelpSheetState();
+}
+
+class _HelpSheetState extends State<_HelpSheet> {
+  final _pages = PageController();
+  var _index = 0;
+
+  @override
+  void dispose() {
+    _pages.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final steps = widget.topic.steps;
+    final last = _index == steps.length - 1;
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '${widget.topic.title} 도움말',
+              style: theme.textTheme.titleMedium,
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              height: HelpArtView.size.height + 96,
+              child: PageView(
+                controller: _pages,
+                onPageChanged: (index) => setState(() => _index = index),
+                children: [
+                  for (final step in steps)
+                    Column(
+                      children: [
+                        HelpArtView(art: step.art),
+                        const SizedBox(height: 16),
+                        Text(
+                          step.text,
+                          style: theme.textTheme.bodyLarge,
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                ],
+              ),
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                for (var i = 0; i < steps.length; i++)
+                  Container(
+                    width: 8,
+                    height: 8,
+                    margin: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: i == _index
+                          ? theme.colorScheme.primary
+                          : theme.colorScheme.outlineVariant,
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: last
+                    ? () => Navigator.pop(context)
+                    : () => _pages.nextPage(
+                        duration: const Duration(milliseconds: 250),
+                        curve: Curves.easeOut,
+                      ),
+                child: Text(last ? '닫기' : '다음'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 // 연결 전 소개 카드. 넘기며 읽고 마지막 장에서 시작한다
