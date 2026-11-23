@@ -11,8 +11,8 @@ select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000
 -- 초대 발급
 create temp table invite on commit drop as select * from create_invite();
 select matches((select code from invite), '^[2-9A-HJ-NP-Za-km-np-z]{10}$', '혼동 문자를 뺀 56자 중 10자');
-select ok((select expires_at between now() + interval '7 days' - interval '1 minute'
-  and now() + interval '7 days' + interval '1 minute' from invite), '만료는 7일 뒤');
+select ok((select expires_at between now() + interval '3 days' - interval '1 minute'
+  and now() + interval '3 days' + interval '1 minute' from invite), '만료는 3일 뒤');
 select is((select code from create_invite()), (select code from invite), '미수락 초대가 있으면 같은 코드');
 select is((select code from my_invite()), (select code from invite), 'my_invite가 내 초대를 돌려준다');
 

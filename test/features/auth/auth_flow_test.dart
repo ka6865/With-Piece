@@ -186,6 +186,23 @@ void main() {
     expect(find.text('우리의 조각'), findsOneWidget);
   });
 
+  testWidgets('초대 코드를 새로 받으면 옛 코드 대신 새 코드를 보여준다', (tester) async {
+    final couples = FakeCoupleRepository();
+    await pumpApp(
+      tester,
+      stage: AppStage.needsCouple,
+      coupleRepository: couples,
+    );
+    await tester.tap(find.text('초대 코드 만들기'));
+    await tester.pumpAndSettle();
+    expect(find.text('MYCODE2345'), findsOneWidget);
+    await tester.tap(find.byTooltip('새 코드 받기'));
+    await tester.pumpAndSettle();
+    expect(couples.regenerations, 1);
+    expect(find.text('MYCODE2345'), findsNothing);
+    expect(find.text('NEWCODE1ZZ'), findsOneWidget);
+  });
+
   testWidgets('로그인 전에 받은 초대 코드를 로그인 뒤 입력칸에 채운다', (tester) async {
     await pumpApp(
       tester,

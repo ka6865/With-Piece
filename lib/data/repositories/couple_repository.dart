@@ -76,6 +76,12 @@ class CoupleRepository {
     return _inviteOf(rows.single as Map<String, dynamic>);
   });
 
+  // 내 열린 코드를 지우고 새로 만든다. 옛 코드는 바로 무효다
+  Future<Result<Invite>> regenerateInvite() => guard(() async {
+    final rows = await _client.rpc('regenerate_invite') as List;
+    return _inviteOf(rows.single as Map<String, dynamic>);
+  });
+
   Future<Result<Invite?>> myInvite() => guard(() async {
     final rows = await _client.rpc('my_invite') as List;
     return rows.isEmpty ? null : _inviteOf(rows.single as Map<String, dynamic>);
