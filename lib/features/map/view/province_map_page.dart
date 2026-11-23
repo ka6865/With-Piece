@@ -63,13 +63,15 @@ class ProvinceMapPage extends ConsumerWidget {
               body: const Center(child: Text('지역을 찾을 수 없어요')),
             );
           }
-          // 채운 조각만 사진으로 채운다. 사진을 받는 동안은 면 색이다
+          // 채운 조각만 사진으로 채운다. 원본을 받는 동안은 빨리 오는 썸네일을 쓰고,
+          // 둘 다 없으면 면 색이다
           final covers = <String, CoverImage>{
             for (final MapEntry(key: id, value: (photo, cover))
                 in effective.entries)
               if (asset.byId(id) != null &&
                   (travel.contains(id) || home.contains(id)))
-                if (ref.watch(coverImageProvider(photo.fullPath)).value
+                if (ref.watch(coverImageProvider(photo.fullPath)).value ??
+                        ref.watch(coverImageProvider(photo.thumbPath)).value
                     case final image?)
                   id: (image: image, cover: cover),
           };
