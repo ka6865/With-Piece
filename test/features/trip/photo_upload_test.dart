@@ -58,7 +58,15 @@ class FakePhotoRepository implements PhotoRepository {
   }
 }
 
+// 사진 격자의 칸 수 기억(PinchColumns)이 읽는다
+late SharedPreferences testPrefs;
+
 void main() {
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    testPrefs = await SharedPreferences.getInstance();
+  });
+
   final photos = [
     for (var h = 0; h < 8; h++)
       LocalPhoto(
@@ -104,6 +112,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          sharedPreferencesProvider.overrideWithValue(testPrefs),
           sessionUserIdProvider.overrideWithValue(null),
           tripLocalPhotosProvider(query).overrideWith((ref) async => photos),
           photoRepositoryProvider.overrideWithValue(repo),
@@ -188,6 +197,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          sharedPreferencesProvider.overrideWithValue(testPrefs),
           sessionUserIdProvider.overrideWithValue(null),
           tripLocalPhotosProvider(query).overrideWith((ref) async => const []),
           photoRepositoryProvider.overrideWithValue(repo),
@@ -218,6 +228,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          sharedPreferencesProvider.overrideWithValue(testPrefs),
           sessionUserIdProvider.overrideWithValue(null),
           tripLocalPhotosProvider(query).overrideWith((ref) async => photos),
           photoRepositoryProvider.overrideWithValue(repo),
@@ -240,6 +251,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          sharedPreferencesProvider.overrideWithValue(testPrefs),
           sessionUserIdProvider.overrideWithValue(null),
           tripLocalPhotosProvider(query).overrideWith((ref) async => photos),
           photoRepositoryProvider.overrideWithValue(repo),
@@ -289,6 +301,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          sharedPreferencesProvider.overrideWithValue(testPrefs),
           sessionUserIdProvider.overrideWithValue(null),
           tripLocalPhotosProvider(query).overrideWith((ref) async => photos),
           photoRepositoryProvider.overrideWithValue(repo),
@@ -395,6 +408,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          sharedPreferencesProvider.overrideWithValue(testPrefs),
           sessionUserIdProvider.overrideWithValue(null),
           tripLocalPhotosProvider(query).overrideWith(
             (ref) async => [
@@ -431,6 +445,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          sharedPreferencesProvider.overrideWithValue(testPrefs),
           sessionUserIdProvider.overrideWithValue(null),
           tripLocalPhotosProvider(query).overrideWith((ref) async => photos),
           photoRepositoryProvider.overrideWithValue(FakePhotoRepository()),

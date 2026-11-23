@@ -12,9 +12,9 @@ class DragSelectGrid extends StatefulWidget {
     required this.onChanged,
     required this.itemBuilder,
     this.enabled = true,
+    this.columns = 4,
   });
 
-  static const columns = 4;
   static const gap = 2.0;
   // 끄는 손가락이 위아래 가장자리 이 거리 안에 들어오면 그쪽으로 저절로 스크롤한다
   static const edge = 64.0;
@@ -26,6 +26,7 @@ class DragSelectGrid extends StatefulWidget {
   final ValueChanged<Set<String>> onChanged;
   final Widget Function(BuildContext context, String id) itemBuilder;
   final bool enabled;
+  final int columns;
 
   @override
   State<DragSelectGrid> createState() => _DragSelectGridState();
@@ -94,7 +95,8 @@ class _DragSelectGridState extends State<DragSelectGrid> {
   // 화면 위치를 격자 칸 번호로 바꾼다. 격자 밖이면 가까운 칸으로 조인다
   int? _indexAt(Offset position, double width) {
     if (widget.ids.isEmpty) return null;
-    const n = DragSelectGrid.columns, gap = DragSelectGrid.gap;
+    final n = widget.columns;
+    const gap = DragSelectGrid.gap;
     final cell = (width - gap * 2 - gap * (n - 1)) / n + gap;
     final col = ((position.dx - gap) / cell).floor().clamp(0, n - 1);
     final row = ((position.dy + _scroll.offset - gap) / cell).floor();
@@ -138,8 +140,8 @@ class _DragSelectGridState extends State<DragSelectGrid> {
         child: GridView.builder(
           controller: _scroll,
           padding: const EdgeInsets.all(DragSelectGrid.gap),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: DragSelectGrid.columns,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: widget.columns,
             mainAxisSpacing: DragSelectGrid.gap,
             crossAxisSpacing: DragSelectGrid.gap,
           ),

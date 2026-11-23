@@ -17,6 +17,7 @@ import '../painter/puzzle_layout.dart';
 import '../painter/puzzle_painter.dart';
 import '../region_covers.dart';
 import 'province_map_page.dart';
+import '../../album/pinch_columns.dart';
 
 // 그 조각의 사진(여행 구분 없이), 촬영 순
 List<PhotoRecord> _regionPhotos(Iterable<PhotoRecord> photos, String regionId) {
@@ -127,32 +128,37 @@ class CoverPickerPage extends ConsumerWidget {
               future: ref.watch(signedUrlCacheProvider).urls([
                 for (final p in photos) p.thumbPath,
               ]),
-              builder: (context, urls) => GridView.count(
-                padding: const EdgeInsets.all(4),
-                crossAxisCount: 3,
-                mainAxisSpacing: 4,
-                crossAxisSpacing: 4,
-                children: [
-                  for (final photo in photos)
-                    Semantics(
-                      button: true,
-                      label: '이 사진으로 정하기',
-                      child: GestureDetector(
-                        onTap: () async {
-                          final saved = await Navigator.of(context).push<bool>(
-                            MaterialPageRoute(
-                              builder: (_) => CoverCropPage(
-                                regionId: regionId,
-                                photo: photo,
-                              ),
-                            ),
-                          );
-                          if (saved == true && context.mounted) context.pop();
-                        },
-                        child: RemoteImage(url: urls.data?[photo.thumbPath]),
+              builder: (context, urls) => PinchColumns(
+                kind: 'album',
+                defaultColumns: 3,
+                builder: (context, columns) => GridView.count(
+                  padding: const EdgeInsets.all(4),
+                  crossAxisCount: columns,
+                  mainAxisSpacing: 4,
+                  crossAxisSpacing: 4,
+                  children: [
+                    for (final photo in photos)
+                      Semantics(
+                        button: true,
+                        label: '이 사진으로 정하기',
+                        child: GestureDetector(
+                          onTap: () async {
+                            final saved = await Navigator.of(context)
+                                .push<bool>(
+                                  MaterialPageRoute(
+                                    builder: (_) => CoverCropPage(
+                                      regionId: regionId,
+                                      photo: photo,
+                                    ),
+                                  ),
+                                );
+                            if (saved == true && context.mounted) context.pop();
+                          },
+                          child: RemoteImage(url: urls.data?[photo.thumbPath]),
+                        ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
             ),
     );

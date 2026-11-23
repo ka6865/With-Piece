@@ -8,13 +8,24 @@ import 'package:woori_piece/data/repositories/photo_repository.dart';
 import 'package:woori_piece/data/repositories/signed_url_cache.dart';
 import 'package:woori_piece/features/album/album_providers.dart';
 import 'package:woori_piece/features/album/photo_grid.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:woori_piece/data/repositories/repository_providers.dart';
+
+// 사진 격자의 칸 수 기억(PinchColumns)이 읽는다
+late SharedPreferences testPrefs;
 
 void main() {
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    testPrefs = await SharedPreferences.getInstance();
+  });
+
   testWidgets('사진 확대 화면도 계정이 바뀌면 이전 사진을 숨긴다', (tester) async {
     final users = StreamController<String?>.broadcast();
     final userStream = StreamProvider<String?>((ref) => users.stream);
     final container = ProviderContainer(
       overrides: [
+        sharedPreferencesProvider.overrideWithValue(testPrefs),
         sessionUserIdProvider.overrideWith(
           (ref) => ref.watch(userStream).value,
         ),

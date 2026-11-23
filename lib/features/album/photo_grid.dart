@@ -7,6 +7,7 @@ import '../../data/repositories/photo_repository.dart';
 import '../../data/repositories/comment_repository.dart';
 import 'album_providers.dart';
 import 'comments.dart';
+import 'pinch_columns.dart';
 
 // 썸네일 격자. 서명 URL은 이 화면의 사진만 한 번에 묶어 받는다(설계 8.2)
 class PhotoGrid extends ConsumerWidget {
@@ -29,33 +30,37 @@ class PhotoGrid extends ConsumerWidget {
       future: ref.watch(signedUrlCacheProvider).urls([
         for (final p in photos) p.thumbPath,
       ]),
-      builder: (context, snapshot) => GridView.count(
-        crossAxisCount: 3,
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        mainAxisSpacing: 4,
-        crossAxisSpacing: 4,
-        children: [
-          for (final (index, photo) in photos.indexed)
-            GestureDetector(
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => FullPhotoPage(
-                    photos: photos,
-                    initialIndex: index,
-                    userId: userId,
+      builder: (context, snapshot) => PinchColumns(
+        kind: 'album',
+        defaultColumns: 3,
+        builder: (context, columns) => GridView.count(
+          crossAxisCount: columns,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          mainAxisSpacing: 4,
+          crossAxisSpacing: 4,
+          children: [
+            for (final (index, photo) in photos.indexed)
+              GestureDetector(
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => FullPhotoPage(
+                      photos: photos,
+                      initialIndex: index,
+                      userId: userId,
+                    ),
                   ),
                 ),
+                onLongPress: onLongPress == null
+                    ? null
+                    : () => onLongPress!(photo),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: RemoteImage(url: snapshot.data?[photo.thumbPath]),
+                ),
               ),
-              onLongPress: onLongPress == null
-                  ? null
-                  : () => onLongPress!(photo),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: RemoteImage(url: snapshot.data?[photo.thumbPath]),
-              ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
