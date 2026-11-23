@@ -118,7 +118,11 @@ class TripDetailPage extends ConsumerWidget {
                             '되돌릴 수 없어요.',
                         action: '지우기',
                       );
-                      if (!ok || !context.mounted) return;
+                      if (!ok ||
+                          !context.mounted ||
+                          ref.read(currentCoupleScopeProvider) != scope) {
+                        return;
+                      }
                       final result = await repo().deleteTrip(trip.id, [
                         for (final p in photos)
                           if (p.uploadedBy == me) p,
