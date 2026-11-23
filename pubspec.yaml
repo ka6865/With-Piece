@@ -44,6 +44,7 @@ dependencies:
   shared_preferences: 2.5.6
   path_provider: 2.1.6
   crypto: ^3.0.8
+  sentry_flutter: 10.3.0
 
 dev_dependencies:
   flutter_test:
