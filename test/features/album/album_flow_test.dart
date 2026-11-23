@@ -21,6 +21,8 @@ import 'package:woori_piece/features/scan/scan_providers.dart';
 import 'package:woori_piece/features/scan/trip_candidates.dart';
 import 'package:woori_piece/map_data/map_asset.dart';
 import 'package:woori_piece/map_data/map_asset_loader.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:woori_piece/data/repositories/repository_providers.dart';
 
 final provinces = MapAsset.parse(
   File('assets/map/provinces_v1.json').readAsStringSync(),
@@ -66,6 +68,7 @@ Future<void> pumpApp(WidgetTester tester, String location) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        sharedPreferencesProvider.overrideWithValue(testPrefs),
         realtimeSyncProvider.overrideWith((ref) {}),
         appStageProvider.overrideWithValue(AppStage.ready),
         initialLocationProvider.overrideWithValue(location),
@@ -97,7 +100,15 @@ Future<void> pumpApp(WidgetTester tester, String location) async {
   await tester.pumpAndSettle();
 }
 
+// 사진 격자의 칸 수 기억(PinchColumns)이 읽는다
+late SharedPreferences testPrefs;
+
 void main() {
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    testPrefs = await SharedPreferences.getInstance();
+  });
+
   testWidgets('앨범은 확인된 여행만 최신순으로 사진 수와 함께 보인다', (tester) async {
     // 2열 격자가 세 여행을 모두 그리도록 화면을 세로로 길게 둔다
     tester.view.physicalSize = const Size(800, 1600);

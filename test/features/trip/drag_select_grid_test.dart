@@ -40,4 +40,32 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     expect(selected.length, after);
   });
+
+  testWidgets('칸 수를 바꿔도 끈 범위의 사진을 고른다', (tester) async {
+    final ids = [for (var i = 0; i < 30; i++) 'p$i'];
+    var selected = <String>{};
+    await tester.pumpWidget(
+      MaterialApp(
+        home: StatefulBuilder(
+          builder: (context, setState) => DragSelectGrid(
+            columns: 3,
+            ids: ids,
+            selected: selected,
+            onChanged: (next) => setState(() => selected = next),
+            itemBuilder: (context, id) =>
+                ColoredBox(key: ValueKey(id), color: Colors.grey),
+          ),
+        ),
+      ),
+    );
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byKey(const ValueKey('p0'))),
+    );
+    await gesture.moveBy(const Offset(30, 0));
+    // 3칸이면 p4는 둘째 줄 가운데다
+    await gesture.moveTo(tester.getCenter(find.byKey(const ValueKey('p4'))));
+    await gesture.up();
+    await tester.pump();
+    expect(selected, {'p0', 'p1', 'p2', 'p3', 'p4'});
+  });
 }

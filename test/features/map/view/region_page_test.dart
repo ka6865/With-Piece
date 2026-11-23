@@ -11,6 +11,8 @@ import 'package:woori_piece/features/auth/auth_state.dart';
 import 'package:woori_piece/features/map/view/region_page.dart';
 import 'package:woori_piece/features/scan/scan_providers.dart';
 import 'package:woori_piece/features/scan/trip_candidates.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:woori_piece/data/repositories/repository_providers.dart';
 
 Trip trip(String id, int day, List<String> regions) => Trip(
   id: id,
@@ -41,6 +43,7 @@ Future<void> pump(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        sharedPreferencesProvider.overrideWithValue(testPrefs),
         sessionUserIdProvider.overrideWithValue('me'),
         currentCoupleProvider.overrideWith(
           (ref) async => const Couple(id: 'c1', partnerId: 'p'),
@@ -59,7 +62,15 @@ Future<void> pump(
   await tester.pumpAndSettle();
 }
 
+// 사진 격자의 칸 수 기억(PinchColumns)이 읽는다
+late SharedPreferences testPrefs;
+
 void main() {
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    testPrefs = await SharedPreferences.getInstance();
+  });
+
   testWidgets('조각 화면은 그 조각이 들어간 여행을 날짜순으로 보인다', (tester) async {
     await pump(
       tester,

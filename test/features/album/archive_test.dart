@@ -17,6 +17,8 @@ import 'package:woori_piece/features/scan/realtime_sync.dart';
 import 'package:woori_piece/features/scan/trip_candidates.dart';
 import 'package:woori_piece/map_data/map_asset.dart';
 import 'package:woori_piece/map_data/map_asset_loader.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:woori_piece/data/repositories/repository_providers.dart';
 
 final provinces = MapAsset.parse(
   File('assets/map/provinces_v1.json').readAsStringSync(),
@@ -29,6 +31,7 @@ Future<void> pumpApp(WidgetTester tester, String location) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        sharedPreferencesProvider.overrideWithValue(testPrefs),
         realtimeSyncProvider.overrideWith((ref) {}),
         appStageProvider.overrideWithValue(AppStage.needsCouple),
         initialLocationProvider.overrideWithValue(location),
@@ -83,7 +86,15 @@ Future<void> pumpApp(WidgetTester tester, String location) async {
   await tester.pumpAndSettle();
 }
 
+// 사진 격자의 칸 수 기억(PinchColumns)이 읽는다
+late SharedPreferences testPrefs;
+
 void main() {
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    testPrefs = await SharedPreferences.getInstance();
+  });
+
   testWidgets('지난 기록에 아카이브된 커플과 삭제 예정일이 보인다', (tester) async {
     await pumpApp(tester, '/archive');
     expect(find.text('지난 연인'), findsOneWidget);

@@ -16,6 +16,7 @@ import '../../data/repositories/comment_repository.dart';
 import 'album_providers.dart';
 import 'comments.dart';
 import 'photo_grid.dart';
+import 'pinch_columns.dart';
 
 // 여행 상세. 사진 추가·지우기(내 사진만), 조각 보정, 제목, 표지(설계 8.4)
 class TripDetailPage extends ConsumerWidget {
@@ -316,49 +317,53 @@ class _DeletePhotosPageState extends ConsumerState<_DeletePhotosPage> {
       ),
       body: FutureBuilder<Map<String, String>>(
         future: _urls,
-        builder: (context, urls) => GridView.count(
-          padding: const EdgeInsets.all(4),
-          crossAxisCount: 3,
-          mainAxisSpacing: 4,
-          crossAxisSpacing: 4,
-          children: [
-            for (final photo in widget.photos)
-              Semantics(
-                selected: _selected.contains(photo.id),
-                label: '사진 고르기',
-                child: GestureDetector(
-                  onTap: _deleting
-                      ? null
-                      : () => setState(() {
-                          if (!_selected.remove(photo.id)) {
-                            _selected.add(photo.id);
-                          }
-                        }),
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      RemoteImage(url: urls.data?[photo.thumbPath]),
-                      if (_selected.contains(photo.id))
-                        ColoredBox(
-                          color: scheme.primary.withValues(alpha: 0.3),
-                        ),
-                      Align(
-                        alignment: Alignment.topRight,
-                        child: Padding(
-                          padding: const EdgeInsets.all(4),
-                          child: Icon(
-                            _selected.contains(photo.id)
-                                ? Icons.check_circle
-                                : Icons.radio_button_unchecked,
-                            color: Colors.white,
+        builder: (context, urls) => PinchColumns(
+          kind: 'album',
+          defaultColumns: 3,
+          builder: (context, columns) => GridView.count(
+            padding: const EdgeInsets.all(4),
+            crossAxisCount: columns,
+            mainAxisSpacing: 4,
+            crossAxisSpacing: 4,
+            children: [
+              for (final photo in widget.photos)
+                Semantics(
+                  selected: _selected.contains(photo.id),
+                  label: '사진 고르기',
+                  child: GestureDetector(
+                    onTap: _deleting
+                        ? null
+                        : () => setState(() {
+                            if (!_selected.remove(photo.id)) {
+                              _selected.add(photo.id);
+                            }
+                          }),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        RemoteImage(url: urls.data?[photo.thumbPath]),
+                        if (_selected.contains(photo.id))
+                          ColoredBox(
+                            color: scheme.primary.withValues(alpha: 0.3),
+                          ),
+                        Align(
+                          alignment: Alignment.topRight,
+                          child: Padding(
+                            padding: const EdgeInsets.all(4),
+                            child: Icon(
+                              _selected.contains(photo.id)
+                                  ? Icons.check_circle
+                                  : Icons.radio_button_unchecked,
+                              color: Colors.white,
+                            ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );

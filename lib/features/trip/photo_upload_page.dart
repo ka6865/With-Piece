@@ -15,6 +15,7 @@ import '../../core/uuid.dart';
 import '../../data/repositories/photo_repository.dart';
 import '../../data/repositories/repository_providers.dart';
 import '../../data/repositories/trip_repository.dart';
+import '../album/pinch_columns.dart';
 import '../scan/scan_providers.dart';
 import '../scan/trip_candidates.dart';
 import 'drag_select_grid.dart';
@@ -476,27 +477,32 @@ class _PhotoUploadPageState extends ConsumerState<PhotoUploadPage> {
                 onPressed: uploading ? null : _pickMore,
               ),
               Expanded(
-                child: DragSelectGrid(
-                  ids: ids,
-                  selected: selected,
-                  enabled: !uploading,
-                  onChanged: _setSelected,
-                  itemBuilder: (context, id) => _SelectableThumbnail(
-                    assetId: id,
-                    selected: selected.contains(id),
-                    onTap: uploading
-                        ? null
-                        : () => _setSelected(
-                            selected.contains(id)
-                                ? selected.difference({id})
-                                : {...selected, id},
-                          ),
-                    onLongPress: () => _openViewer(
-                      context,
-                      ids,
-                      id,
-                      selected,
-                      uploading ? null : _setSelected,
+                child: PinchColumns(
+                  kind: 'picker',
+                  defaultColumns: 4,
+                  builder: (context, columns) => DragSelectGrid(
+                    columns: columns,
+                    ids: ids,
+                    selected: selected,
+                    enabled: !uploading,
+                    onChanged: _setSelected,
+                    itemBuilder: (context, id) => _SelectableThumbnail(
+                      assetId: id,
+                      selected: selected.contains(id),
+                      onTap: uploading
+                          ? null
+                          : () => _setSelected(
+                              selected.contains(id)
+                                  ? selected.difference({id})
+                                  : {...selected, id},
+                            ),
+                      onLongPress: () => _openViewer(
+                        context,
+                        ids,
+                        id,
+                        selected,
+                        uploading ? null : _setSelected,
+                      ),
                     ),
                   ),
                 ),
@@ -641,31 +647,36 @@ class _LibraryPickerPageState extends ConsumerState<LibraryPickerPage> {
         if (n.metrics.extentAfter < 400) _loadMore();
         return false;
       },
-      child: DragSelectGrid(
-        ids: [for (final p in _photos) p.assetId],
-        selected: _selected,
-        onChanged: (next) => setState(
-          () => _selected
-            ..clear()
-            ..addAll(next),
-        ),
-        itemBuilder: (context, id) => _SelectableThumbnail(
-          assetId: id,
-          selected: _selected.contains(id),
-          onTap: () => setState(
-            () => _selected.contains(id)
-                ? _selected.remove(id)
-                : _selected.add(id),
+      child: PinchColumns(
+        kind: 'picker',
+        defaultColumns: 4,
+        builder: (context, columns) => DragSelectGrid(
+          columns: columns,
+          ids: [for (final p in _photos) p.assetId],
+          selected: _selected,
+          onChanged: (next) => setState(
+            () => _selected
+              ..clear()
+              ..addAll(next),
           ),
-          onLongPress: () => _openViewer(
-            context,
-            [for (final p in _photos) p.assetId],
-            id,
-            {..._selected},
-            (next) => setState(
-              () => _selected
-                ..clear()
-                ..addAll(next),
+          itemBuilder: (context, id) => _SelectableThumbnail(
+            assetId: id,
+            selected: _selected.contains(id),
+            onTap: () => setState(
+              () => _selected.contains(id)
+                  ? _selected.remove(id)
+                  : _selected.add(id),
+            ),
+            onLongPress: () => _openViewer(
+              context,
+              [for (final p in _photos) p.assetId],
+              id,
+              {..._selected},
+              (next) => setState(
+                () => _selected
+                  ..clear()
+                  ..addAll(next),
+              ),
             ),
           ),
         ),
