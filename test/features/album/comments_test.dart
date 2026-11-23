@@ -140,6 +140,15 @@ void main() {
     expect(find.widgetWithText(TextField, '좋았어'), findsNothing);
   });
 
+  testWidgets('댓글 신고 경로에 운영 담당자 정보와 신고 사유가 보인다', (tester) async {
+    await _pump(tester);
+    await tester.tap(find.byTooltip('댓글 신고').first);
+    await tester.pumpAndSettle();
+    expect(find.text('운영 담당 강희성'), findsOneWidget);
+    expect(find.text('ka6865@gmail.com'), findsOneWidget);
+    expect(find.text('부적절한 내용'), findsOneWidget);
+  });
+
   testWidgets('내 글만 길게 눌러 고치거나 지울 수 있다', (tester) async {
     await _pump(tester);
     await tester.longPress(find.text('다음엔 겨울에'));

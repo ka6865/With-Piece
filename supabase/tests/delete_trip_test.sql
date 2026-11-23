@@ -1,5 +1,5 @@
 begin;
-select plan(11);
+select plan(16);
 
 insert into auth.users (id) values
   ('00000000-0000-0000-0000-0000000000a1'), ('00000000-0000-0000-0000-0000000000b1'),
@@ -37,7 +37,7 @@ set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000b1","role":"authenticated"}', true);
 
 -- B가 A의 사진이 든 수동 여행을 지운다
-select lives_ok($$ select delete_trip('30000000-0000-0000-0000-00000000000a') $$, 'B가 수동 여행을 지운다');
+select lives_ok($$ select delete_trip('30000000-0000-0000-0000-00000000000a', 1) $$, 'B가 수동 여행을 지운다');
 reset role;
 select is((select count(*)::int from trips where id = '30000000-0000-0000-0000-00000000000a'), 0, '수동 여행은 행이 사라진다');
 select is((select count(*)::int from photos where id = '40000000-0000-0000-0000-000000000001'), 0, '상대가 올린 사진도 지워진다');
@@ -45,18 +45,30 @@ select is((select count(*)::int from photos where id = '40000000-0000-0000-0000-
 -- 자동 여행은 버린 여행으로 남아 같은 기간이 후보로 다시 뜨지 않는다
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000b1","role":"authenticated"}', true);
-select lives_ok($$ select delete_trip('30000000-0000-0000-0000-00000000000b') $$, 'B가 자동 여행을 지운다');
+select throws_ok($$ select delete_trip('30000000-0000-0000-0000-00000000000b', 1) $$, 'P0001', 'photo_count_changed', '확인 이후 사진 수가 바뀌면 삭제를 거부한다');
+select throws_ok($$ select delete_trip('30000000-0000-0000-0000-00000000000b', null) $$, 'P0001', 'photo_count_changed', 'NULL 장수 확인은 삭제를 거부한다');
+select throws_ok($$ select delete_trip('30000000-0000-0000-0000-00000000000b') $$, 'P0001', 'app_update_required', '예전 앱의 장수 없는 삭제 호출은 실패한다');
+select lives_ok($$ select delete_trip('30000000-0000-0000-0000-00000000000b', 2) $$, 'B가 자동 여행을 지운다');
 reset role;
 select is((select status from trips where id = '30000000-0000-0000-0000-00000000000b'), 'dismissed', '자동 여행은 버린 여행이 된다');
 select is((select cover_photo_id from trips where id = '30000000-0000-0000-0000-00000000000b'), null, '표지가 비워진다');
 select is((select count(*)::int from photos where trip_id = '30000000-0000-0000-0000-00000000000b'), 0, '두 사람 사진이 모두 지워진다');
 select is((select count(*)::int from trip_regions where trip_id = '30000000-0000-0000-0000-00000000000b'), 0, '조각이 빠진다');
 select is((select count(*)::int from guestbook_entries where trip_id = '30000000-0000-0000-0000-00000000000b'), 0, '방명록이 지워진다');
+select throws_ok($$ insert into photos (trip_id, couple_id, object_key, width, height, byte_size, uploaded_by)
+  values ('30000000-0000-0000-0000-00000000000b', '10000000-0000-0000-0000-000000000001',
+  '10000000-0000-0000-0000-000000000001/30000000-0000-0000-0000-00000000000b/late.heic', 1, 1, 1,
+  '00000000-0000-0000-0000-0000000000b1') $$, 'P0001', 'trip_not_uploadable', '버린 여행에는 사진을 붙이지 못한다');
+
+set local role authenticated;
+select throws_ok($$ insert into storage.objects (bucket_id, name)
+  values ('photos', '10000000-0000-0000-0000-000000000001/30000000-0000-0000-0000-00000000000b/full/late.heic')
+  $$, '42501', null, '버린 여행에는 Storage 파일을 올리지 못한다');
 
 -- 다른 커플의 여행은 지우지 못한다
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000b1","role":"authenticated"}', true);
-select throws_ok($$ select delete_trip('30000000-0000-0000-0000-00000000000c') $$, 'P0001', 'trip_not_found', '남의 여행은 지울 수 없다');
+select throws_ok($$ select delete_trip('30000000-0000-0000-0000-00000000000c', 0) $$, 'P0001', 'trip_not_found', '남의 여행은 지울 수 없다');
 
 -- 연결을 끊은 뒤(지난 기록)에는 지우지 못한다
 reset role;
@@ -64,7 +76,7 @@ update users set active_couple_id = null where id in ('00000000-0000-0000-0000-0
 update couples set status = 'archived', archived_at = now() where id = '10000000-0000-0000-0000-000000000002';
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000c1","role":"authenticated"}', true);
-select throws_ok($$ select delete_trip('30000000-0000-0000-0000-00000000000c') $$, 'P0001', 'trip_not_found', '지난 기록의 여행은 지울 수 없다');
+select throws_ok($$ select delete_trip('30000000-0000-0000-0000-00000000000c', 0) $$, 'P0001', 'trip_not_found', '지난 기록의 여행은 지울 수 없다');
 
 select * from finish();
 rollback;

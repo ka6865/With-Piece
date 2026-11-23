@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -70,6 +71,8 @@ Future<void> pumpApp(
   String location, {
   TripRepository? tripRepository,
   List<Trip>? tripList,
+  Future<List<PhotoRecord>>? photoFuture,
+  bool settle = true,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -96,6 +99,11 @@ Future<void> pumpApp(
             photo('p3', 'old', 'me'),
           ],
         ),
+        if (photoFuture != null)
+          scopedCouplePhotosProvider((
+            userId: 'me',
+            coupleId: 'c1',
+          )).overrideWith((ref) => photoFuture),
         signedUrlCacheProvider.overrideWithValue(
           SignedUrlCache(
             (paths) async => {for (final p in paths) p: 'https://x/$p'},
@@ -105,7 +113,13 @@ Future<void> pumpApp(
       child: const WooriPieceApp(),
     ),
   );
-  await tester.pumpAndSettle();
+  if (settle) {
+    await tester.pumpAndSettle();
+  } else {
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+  }
 }
 
 // 사진 격자의 칸 수 기억(PinchColumns)이 읽는다
@@ -136,6 +150,45 @@ void main() {
     expect(find.text('속초시'), findsWidgets);
     expect(find.byTooltip('사진 지우기'), findsOneWidget);
     expect(find.text('사진 추가하기'), findsOneWidget);
+  });
+
+  testWidgets('사진 조회가 끝나기 전에는 여행 삭제를 시작할 수 없다', (tester) async {
+    final photos = Completer<List<PhotoRecord>>();
+    await pumpApp(
+      tester,
+      '/trips/t3',
+      photoFuture: photos.future,
+      settle: false,
+    );
+    await tester.tap(find.byTooltip('여행 지우기'));
+    await tester.pump();
+    expect(find.textContaining('두 사람이 올린 사진'), findsNothing);
+    photos.complete([photo('p1', 't3', 'me'), photo('p2', 't3', 'partner')]);
+  });
+
+  testWidgets('사진 조회에 실패해도 여행 삭제를 시작할 수 없다', (tester) async {
+    final photos = Completer<List<PhotoRecord>>();
+    await pumpApp(
+      tester,
+      '/trips/t3',
+      photoFuture: photos.future,
+      settle: false,
+    );
+    photos.completeError(StateError('photo fetch failed'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('여행 지우기'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('두 사람이 올린 사진'), findsNothing);
+  });
+
+  testWidgets('버린 여행 상세는 닫힌 상태로 표시한다', (tester) async {
+    await pumpApp(
+      tester,
+      '/trips/gone',
+      tripList: [trip('gone', '버린 여행', 2, [], status: TripStatus.dismissed)],
+    );
+    expect(find.text('여행을 찾을 수 없어요'), findsOneWidget);
+    expect(find.byTooltip('여행 지우기'), findsNothing);
   });
 
   testWidgets('휴지통에서 내 사진만 골라 확인을 받고 지운다', (tester) async {
@@ -176,6 +229,7 @@ void main() {
     await tester.tap(find.widgetWithText(TextButton, '지우기'));
     await tester.pumpAndSettle();
     expect(repo.deletedTrips, ['t3']);
+    expect(repo.deletedPhotoCounts, [2]);
     // 내 파일만 바로 지운다. 상대 파일은 정리 작업이 지운다
     expect(repo.deletedFiles, ['p1']);
     expect(find.byKey(const Key('trip-detail')), findsNothing);

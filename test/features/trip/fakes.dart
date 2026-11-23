@@ -74,14 +74,17 @@ class FakeTripRepository implements TripRepository {
   final removed = <String>[];
   final deletedTrips = <String>[];
   final deletedFiles = <String>[];
+  final deletedPhotoCounts = <int>[];
 
   @override
   Future<Result<void>> deleteTrip(
     String tripId,
-    Iterable<PhotoRecord> myPhotos,
-  ) async {
+    Iterable<PhotoRecord> myPhotos, {
+    required int expectedPhotoCount,
+  }) async {
     deletedTrips.add(tripId);
     deletedFiles.addAll(myPhotos.map((p) => p.id));
+    deletedPhotoCounts.add(expectedPhotoCount);
     return const Ok(null);
   }
 

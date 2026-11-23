@@ -46,7 +46,7 @@ class TripDetailPage extends ConsumerWidget {
       trips = ref.watch(scopedTripsProvider(scope));
     }
     final trip = trips.value?.where((t) => t.id == tripId).firstOrNull;
-    if (trip == null) {
+    if (trip == null || trip.status == TripStatus.dismissed) {
       return Scaffold(
         appBar: AppBar(),
         body: trips.isLoading
@@ -103,34 +103,45 @@ class TripDetailPage extends ConsumerWidget {
             IconButton(
               tooltip: '여행 지우기',
               icon: const Icon(Icons.delete_forever_outlined),
-              onPressed: () async {
-                // 상대 사진까지 지운다(설계 8.4, 2026-11-23 사용자 결정)
-                final ok = await confirmAction(
-                  context,
-                  title: '이 여행을 지울까요?',
-                  message:
-                      '두 사람이 올린 사진 ${photos.length}장과 방명록이 모두 지워져요. '
-                      '되돌릴 수 없어요.',
-                  action: '지우기',
-                );
-                if (!ok || !context.mounted) return;
-                final result = await repo().deleteTrip(trip.id, [
-                  for (final p in photos)
-                    if (p.uploadedBy == me) p,
-                ]);
-                if (!context.mounted) return;
-                if (result is Err) {
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(const SnackBar(content: Text('여행을 지우지 못했어요')));
-                  return;
-                }
-                await Navigator.of(context).maybePop();
-                ref.invalidate(tripsProvider);
-                if (userId != null) {
-                  ref.invalidate(couplePhotosProvider(userId));
-                }
-              },
+              onPressed:
+                  photosState.isLoading ||
+                      photosState.hasError ||
+                      !photosState.hasValue
+                  ? null
+                  : () async {
+                      // 상대 사진까지 지운다(설계 8.4, 2026-11-23 사용자 결정)
+                      final ok = await confirmAction(
+                        context,
+                        title: '이 여행을 지울까요?',
+                        message:
+                            '두 사람이 올린 사진 ${photos.length}장과 방명록이 모두 지워져요. '
+                            '되돌릴 수 없어요.',
+                        action: '지우기',
+                      );
+                      if (!ok || !context.mounted) return;
+                      final result = await repo().deleteTrip(trip.id, [
+                        for (final p in photos)
+                          if (p.uploadedBy == me) p,
+                      ], expectedPhotoCount: photos.length);
+                      if (!context.mounted) return;
+                      ref.invalidate(tripsProvider);
+                      if (userId != null) {
+                        ref.invalidate(couplePhotosProvider(userId));
+                      }
+                      if (result case Err(:final error)) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              error == AppError.validation
+                                  ? '여행 기록이 변경됐어요. 사진 수를 다시 확인해 주세요'
+                                  : '여행을 지우지 못했어요',
+                            ),
+                          ),
+                        );
+                        return;
+                      }
+                      await Navigator.of(context).maybePop();
+                    },
             ),
         ],
       ),
@@ -217,6 +228,7 @@ class TripDetailPage extends ConsumerWidget {
           const SizedBox(height: 16),
           PhotoGrid(
             photos: photos,
+            allowSave: readOnly,
             onLongPress: readOnly
                 ? null
                 : (photo) => run(

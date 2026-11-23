@@ -11,6 +11,10 @@ update users set active_couple_id = '10000000-0000-0000-0000-000000000001'
   where id in ('00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000000b1');
 insert into trips (id, couple_id, title, started_on, ended_on, status, source) values
   ('30000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', '속초', '2026-10-03', '2026-10-03', 'confirmed', 'manual');
+insert into photos (id, trip_id, couple_id, object_key, width, height, byte_size, uploaded_by) values
+  ('40000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001',
+   '10000000-0000-0000-0000-000000000001/30000000-0000-0000-0000-000000000001/p.heic', 1, 1, 1,
+   '00000000-0000-0000-0000-0000000000b1');
 insert into photo_days values
   ('00000000-0000-0000-0000-0000000000a1', '2026-10-03', '32060', 1),
   ('00000000-0000-0000-0000-0000000000b1', '2026-10-03', '32060', 1);
@@ -43,15 +47,11 @@ reset role;
 select is((select deletion_requested_at from users where id = '00000000-0000-0000-0000-0000000000a1'), null, '요청 시각이 비워진다');
 select is((select status from couples where id = '10000000-0000-0000-0000-000000000001'), 'archived', '커플은 되살리지 않는다');
 
--- 만료된 삭제: A를 31일 전 요청으로 만들고 사진을 둔다
+-- 만료된 삭제: A를 31일 전 요청으로 만들고 저장소의 파일을 둔다
 update users set deletion_requested_at = now() - interval '31 days'
   where id = '00000000-0000-0000-0000-0000000000a1';
 update users set deletion_requested_at = now() - interval '29 days'
   where id = '00000000-0000-0000-0000-0000000000c1';
-insert into photos (id, trip_id, couple_id, object_key, width, height, byte_size, uploaded_by) values
-  ('40000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001',
-   '10000000-0000-0000-0000-000000000001/30000000-0000-0000-0000-000000000001/p.heic', 1, 1, 1,
-   '00000000-0000-0000-0000-0000000000b1');
 -- 정리 목록은 사진 행과 관계없이 그 커플의 실제 저장소 객체로 만든다.
 insert into storage.objects (bucket_id, name) values
   ('photos', '10000000-0000-0000-0000-000000000001/30000000-0000-0000-0000-000000000001/full/p.heic'),

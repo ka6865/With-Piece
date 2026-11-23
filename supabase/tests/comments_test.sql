@@ -1,5 +1,5 @@
 begin;
-select plan(18);
+select plan(28);
 
 -- a·b 커플, c는 다른 커플. 여행 하나와 사진 하나
 insert into auth.users (id) values
@@ -56,9 +56,23 @@ delete from photo_comments;
 select is((select content from guestbook_entries), '또 가자!!', '상대 글을 고치지 못한다');
 select is((select count(*)::int from photo_comments), 1, '상대 댓글을 지우지 못한다');
 
+select lives_ok($$ select submit_content_report('photo', '40000000-0000-0000-0000-000000000001', 'privacy') $$,
+  '커플 사진을 신고할 수 있다');
+select lives_ok($$ select submit_content_report('photo', '40000000-0000-0000-0000-000000000001', 'privacy') $$,
+  '같은 신고를 재시도할 수 있다');
+select lives_ok($$ select submit_content_report('photo_comment', (select id from photo_comments), 'other') $$,
+  '사진 댓글을 신고할 수 있다');
+select throws_ok($$ select submit_content_report('photo', '40000000-0000-0000-0000-000000000001', 'invalid') $$,
+  '22023', 'invalid report reason', '정의된 사유만 받는다');
+select throws_ok($$ select * from content_reports $$,
+  '42501', null, '앱에서 운영자용 신고 목록을 열 수 없다');
+
 -- 다른 커플(c)은 읽지 못한다
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000c1","role":"authenticated"}', true);
 select is((select count(*)::int from guestbook_entries) + (select count(*)::int from photo_comments), 0, '다른 커플은 댓글을 읽지 못한다');
+
+select throws_ok($$ select submit_content_report('photo', '40000000-0000-0000-0000-000000000001', 'privacy') $$,
+  '42501', 'target unavailable', '다른 커플의 사진은 신고할 수 없다');
 
 -- 아카이브하면 읽기만 된다
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000a1","role":"authenticated"}', true);
@@ -67,6 +81,18 @@ select is((select count(*)::int from guestbook_entries), 1, '지난 커플의 �
 select throws_ok($$ insert into guestbook_entries (trip_id, couple_id, content)
   values ('30000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', '이제 못 씀') $$,
   '42501', null, '지난 커플에는 쓰지 못한다');
+
+select lives_ok($$ select submit_content_report('trip_comment', (select id from guestbook_entries), 'harassment') $$,
+  '지난 여행 방명록도 신고할 수 있다');
+
+reset role;
+set local role anon;
+select throws_ok($$ select submit_content_report('photo', '40000000-0000-0000-0000-000000000001', 'privacy') $$,
+  '42501', null, '비로그인 호출은 거부한다');
+reset role;
+set local role service_role;
+select is((select count(*)::int from content_reports), 3, '운영자가 중복을 제외한 신고를 읽는다');
+select is((select reason from content_reports where target_kind = 'photo'), 'privacy', '사진 신고 사유를 보관한다');
 
 -- 사진을 지우면 댓글도 지워진다
 reset role;

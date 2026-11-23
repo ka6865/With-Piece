@@ -248,33 +248,47 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
           )
         else
           for (final comment in rows)
-            InkWell(
-              onLongPress: writable && comment.authorId == me
-                  ? () => _menu(comment)
-                  : null,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      [
-                        comment.authorId == me
-                            ? '나'
-                            // 지난 커플의 글에 지금 상대 이름을 붙이지 않는다
-                            : comment.authorId == couple?.partnerId
-                            ? couple?.partnerName ?? '상대'
-                            : '상대',
-                        _time(comment.createdAt),
-                        if (comment.updatedAt != null) '수정됨',
-                      ].join(' · '),
-                      style: muted,
+            Row(
+              children: [
+                Expanded(
+                  child: InkWell(
+                    onLongPress: writable && comment.authorId == me
+                        ? () => _menu(comment)
+                        : null,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            [
+                              comment.authorId == me
+                                  ? '나'
+                                  // 지난 커플의 글에 지금 상대 이름을 붙이지 않는다
+                                  : comment.authorId == couple?.partnerId
+                                  ? couple?.partnerName ?? '상대'
+                                  : '상대',
+                              _time(comment.createdAt),
+                              if (comment.updatedAt != null) '수정됨',
+                            ].join(' · '),
+                            style: muted,
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            comment.content,
+                            style: theme.textTheme.bodyMedium,
+                          ),
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: 2),
-                    Text(comment.content, style: theme.textTheme.bodyMedium),
-                  ],
+                  ),
                 ),
-              ),
+                IconButton(
+                  tooltip: '댓글 신고',
+                  icon: const Icon(Icons.flag_outlined, size: 18),
+                  onPressed: () => _reportComment(comment.id),
+                ),
+              ],
             ),
         if (writable)
           Row(
@@ -302,6 +316,13 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
       ],
     );
   }
+
+  Future<void> _reportComment(String commentId) => reportAlbumContent(
+    context,
+    ref,
+    widget.kind == CommentKind.trip ? 'trip_comment' : 'photo_comment',
+    commentId,
+  );
 
   static String _time(DateTime at) {
     final local = at.toLocal();
@@ -349,4 +370,51 @@ class _EditDialogState extends State<_EditDialog> {
       ),
     ],
   );
+}
+
+Future<void> reportAlbumContent(
+  BuildContext context,
+  WidgetRef ref,
+  String kind,
+  String targetId,
+) async {
+  final reporterId = ref.read(sessionUserIdProvider);
+  final reason = await showModalBottomSheet<String>(
+    context: context,
+    showDragHandle: true,
+    useSafeArea: true,
+    builder: (context) => ListView(
+      shrinkWrap: true,
+      children: [
+        for (final (value, label) in [
+          ('inappropriate', '부적절한 내용'),
+          ('harassment', '괴롭힘'),
+          ('privacy', '개인정보'),
+          ('other', '기타'),
+        ])
+          ListTile(
+            title: Text(label),
+            onTap: () => Navigator.pop(context, value),
+          ),
+        const ListTile(
+          title: Text('운영 담당 강희성'),
+          subtitle: Text('ka6865@gmail.com'),
+        ),
+      ],
+    ),
+  );
+  if (reason == null ||
+      !context.mounted ||
+      reporterId == null ||
+      ref.read(sessionUserIdProvider) != reporterId) {
+    return;
+  }
+  final result = await ref
+      .read(reportRepositoryProvider)
+      .submit(kind: kind, targetId: targetId, reason: reason);
+  if (context.mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(result is Ok ? '신고를 접수했어요' : '신고를 접수하지 못했어요')),
+    );
+  }
 }
