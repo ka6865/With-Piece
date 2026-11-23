@@ -14,6 +14,8 @@ import 'package:woori_piece/map_data/map_asset.dart';
 import 'package:woori_piece/map_data/map_asset_loader.dart';
 
 import 'fakes.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:woori_piece/features/guide/guide.dart';
 
 // 테스트에서 단계를 바꿀 수 있게 한다
 class StageController extends Notifier<AppStage> {
@@ -42,12 +44,18 @@ Future<ProviderContainer> pumpApp(
   FakeCoupleRepository? coupleRepository,
   Couple? couple,
   void Function()? onRealtimeStart,
+  bool introSeen = true,
 }) async {
+  SharedPreferences.setMockInitialValues({
+    IntroPage.seenKey: ?(introSeen ? true : null),
+  });
+  final prefs = await SharedPreferences.getInstance();
   final controller = NotifierProvider<StageController, AppStage>(
     () => StageController(stage),
   );
   final container = ProviderContainer(
     overrides: [
+      sharedPreferencesProvider.overrideWithValue(prefs),
       sessionUserIdProvider.overrideWithValue('me'),
       appStageProvider.overrideWith((ref) => ref.watch(controller)),
       sessionProvider.overrideWith((ref) => Stream.value(null)),
@@ -201,6 +209,30 @@ void main() {
     expect(couples.regenerations, 1);
     expect(find.text('MYCODE2345'), findsNothing);
     expect(find.text('NEWCODE1ZZ'), findsOneWidget);
+  });
+
+  testWidgets('처음 연결 화면에 오면 소개 카드를 한 번 보여주고 ?로 다시 연다', (tester) async {
+    await pumpApp(tester, stage: AppStage.needsCouple, introSeen: false);
+    expect(find.text('1 / 4'), findsOneWidget);
+    for (var i = 0; i < 3; i++) {
+      await tester.tap(find.text('다음'));
+      await tester.pumpAndSettle();
+    }
+    expect(find.text('먼저 연인과 연결해요'), findsNothing);
+    await tester.tap(find.text('시작하기'));
+    await tester.pumpAndSettle();
+    expect(find.text('연인과 연결하기'), findsOneWidget);
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getBool(IntroPage.seenKey), isTrue);
+    await tester.tap(find.byTooltip('소개 보기'));
+    await tester.pumpAndSettle();
+    expect(find.text('1 / 4'), findsOneWidget);
+  });
+
+  testWidgets('소개를 본 기기에서는 다시 띄우지 않는다', (tester) async {
+    await pumpApp(tester, stage: AppStage.needsCouple);
+    expect(find.text('1 / 4'), findsNothing);
+    expect(find.text('연인과 연결하기'), findsOneWidget);
   });
 
   testWidgets('로그인 전에 받은 초대 코드를 로그인 뒤 입력칸에 채운다', (tester) async {

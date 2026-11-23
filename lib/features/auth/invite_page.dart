@@ -11,6 +11,7 @@ import '../../data/repositories/repository_providers.dart';
 import '../scan/solo_preview.dart';
 import 'account_state.dart';
 import 'auth_state.dart';
+import '../guide/guide.dart';
 
 const _outcomeMessages = {
   JoinOutcome.invalidCode: '코드를 다시 확인해 주세요',
@@ -34,10 +35,27 @@ class _InvitePageState extends ConsumerState<InvitePage> {
   );
 
   @override
+  void initState() {
+    super.initState();
+    // 처음 연결 화면에 온 사람에게 소개 카드를 한 번 보여준다(2026-11-23 설계 ④)
+    final prefs = ref.read(sharedPreferencesProvider);
+    if (prefs.getBool(IntroPage.seenKey) != true) {
+      prefs.setBool(IntroPage.seenKey, true);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _openIntro();
+      });
+    }
+  }
+
+  @override
   void dispose() {
     _code.dispose();
     super.dispose();
   }
+
+  void _openIntro() => Navigator.of(
+    context,
+  ).push(MaterialPageRoute<void>(builder: (_) => const IntroPage()));
 
   void _toast(String message) => ScaffoldMessenger.of(
     context,
@@ -88,6 +106,11 @@ class _InvitePageState extends ConsumerState<InvitePage> {
       appBar: AppBar(
         title: const Text('연인과 연결하기'),
         actions: [
+          IconButton(
+            tooltip: '소개 보기',
+            icon: const Icon(Icons.help_outline),
+            onPressed: _openIntro,
+          ),
           TextButton(
             onPressed: () => context.push('/settings/accounts'),
             child: const Text('계정 설정'),

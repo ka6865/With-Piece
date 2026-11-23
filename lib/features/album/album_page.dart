@@ -12,6 +12,7 @@ import '../trip/trip_candidates_page.dart';
 import 'album_providers.dart';
 import 'comments.dart';
 import 'photo_grid.dart';
+import '../guide/guide.dart';
 
 // 확인된 여행을 최신순으로 본다. 지도가 "어디"라면 앨범은 "언제"다(설계 8.4)
 class AlbumPage extends ConsumerWidget {
@@ -59,7 +60,12 @@ class AlbumPage extends ConsumerWidget {
         trip.id: ?_coverOf(trip, photosByTrip[trip.id] ?? const []),
     };
     return Scaffold(
-      appBar: AppBar(title: Text(archived == null ? '퍼즐 앨범' : '지난 기록')),
+      appBar: AppBar(
+        title: Text(archived == null ? '퍼즐 앨범' : '지난 기록'),
+        actions: [
+          if (archived == null) const HelpButton(topic: HelpTopic.album),
+        ],
+      ),
       body: trips.hasValue
           ? confirmed.isEmpty
                 ? Center(

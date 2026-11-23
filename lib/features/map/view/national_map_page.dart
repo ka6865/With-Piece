@@ -8,6 +8,7 @@ import '../../auth/auth_state.dart';
 import '../../scan/realtime_sync.dart';
 import '../../scan/scan_providers.dart';
 import 'puzzle_map.dart';
+import '../../guide/guide.dart';
 
 class NationalMapPage extends ConsumerWidget {
   const NationalMapPage({super.key});
@@ -27,7 +28,10 @@ class NationalMapPage extends ConsumerWidget {
         : ref.watch(scopedHomeRegionIdsProvider(scope)).value;
     final filled = filledRegionIds(trips ?? const [], home ?? const {});
     return Scaffold(
-      appBar: AppBar(title: const Text('우리들의 조각')),
+      appBar: AppBar(
+        title: const Text('우리들의 조각'),
+        actions: const [HelpButton(topic: HelpTopic.map)],
+      ),
       body: switch ((provinces, regions)) {
         (
           AsyncData(value: final provinceAsset),
