@@ -1,8 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:woori_piece/core/error_reporting.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   test('오류 종류와 별도로 제공한 진단 ID만 보낸다', () {
     final event = SentryEvent(
       exceptions: [SentryException(type: 'StateError', value: 'a@b.com')],
@@ -62,6 +65,35 @@ void main() {
     expect(json.toString(), isNot(contains('account-id')));
     expect(json.toString(), contains('StateError'));
     expect(json.toString(), contains('main.dart'));
+  });
+
+  test('Dart 전송이 필터를 거쳐 오류만 보낸다', () async {
+    final payloads = <String>[];
+    await SentryFlutter.init((options) {
+      configureSentry(
+        options,
+        dsn: 'https://test@localhost/1',
+        environment: 'test',
+        installationId: 'known-install',
+      );
+      options.compressPayload = false;
+      options.httpClient = MockClient((request) async {
+        payloads.add(request.body);
+        return http.Response('{}', 200);
+      });
+    });
+    addTearDown(Sentry.close);
+    await Sentry.captureException(
+      StateError('공유하지 않는 여행 제목'),
+      stackTrace: StackTrace.current,
+      withScope: (scope) => scope.setUser(SentryUser(id: 'local-account')),
+    );
+    await Sentry.captureMessage('진단 대상 외 메시지');
+    expect(payloads, hasLength(1));
+    expect(payloads.single, contains('StateError'));
+    expect(payloads.single, contains('known-install'));
+    expect(payloads.single, isNot(contains('local-account')));
+    expect(payloads.single, isNot(contains('공유하지 않는 여행 제목')));
   });
 
   test('화면 캡처, 화면 구조, 성능 추적, 자동 기록을 끈다', () {
