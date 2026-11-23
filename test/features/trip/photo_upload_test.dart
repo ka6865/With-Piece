@@ -9,6 +9,7 @@ import 'package:woori_piece/core/supabase/supabase_providers.dart';
 import 'package:woori_piece/core/result/result.dart';
 import 'package:woori_piece/data/repositories/photo_repository.dart';
 import 'package:woori_piece/features/scan/trip_candidates.dart';
+import 'package:woori_piece/features/trip/local_photo_viewer.dart';
 import 'package:woori_piece/features/trip/photo_selection.dart';
 import 'package:woori_piece/features/trip/photo_upload_page.dart';
 import 'package:woori_piece/data/repositories/repository_providers.dart';
@@ -141,6 +142,29 @@ void main() {
     await back.up();
     await tester.pump();
     expect(find.text('4장 올리기'), findsOneWidget);
+  });
+
+  testWidgets('길게 누르면 크게 보고, 넘겨서 그 화면에서 고른다', (tester) async {
+    final loader = LocalPhotoViewerPage.loader;
+    LocalPhotoViewerPage.loader = (_) async => null;
+    addTearDown(() => LocalPhotoViewerPage.loader = loader);
+    await pump(tester);
+    await tester.longPress(
+      find.byWidgetPredicate((w) => w is LocalThumbnail && w.assetId == 's2'),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('3 / 9'), findsOneWidget);
+    expect(find.byType(InteractiveViewer), findsWidgets);
+    // 크게 보기만 해서는 고르지 않는다
+    await tester.fling(find.byType(PageView), const Offset(-400, 0), 1000);
+    await tester.pumpAndSettle();
+    expect(find.text('4 / 9'), findsOneWidget);
+    await tester.tap(find.byTooltip('고르기'));
+    await tester.pump();
+    expect(find.byTooltip('고르기 해제'), findsOneWidget);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.text('1장 올리기'), findsOneWidget);
   });
 
   testWidgets('올리면 고른 사진마다 조각과 촬영 시각으로 업로드한다', (tester) async {

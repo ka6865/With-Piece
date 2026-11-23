@@ -18,6 +18,7 @@ import '../../data/repositories/trip_repository.dart';
 import '../scan/scan_providers.dart';
 import '../scan/trip_candidates.dart';
 import 'drag_select_grid.dart';
+import 'local_photo_viewer.dart';
 import 'photo_selection.dart';
 
 class TripPhotoQuery {
@@ -443,6 +444,7 @@ class _PhotoUploadPageState extends ConsumerState<PhotoUploadPage> {
             ..._extra.where((e) => !inRange.any((p) => p.assetId == e.assetId)),
           ];
     final selected = _selected ?? const <String>{};
+    final ids = [for (final p in list ?? const <LocalPhoto>[]) p.assetId];
     final uploading = _done != null;
     return PopScope(
       canPop: !uploading,
@@ -475,7 +477,7 @@ class _PhotoUploadPageState extends ConsumerState<PhotoUploadPage> {
               ),
               Expanded(
                 child: DragSelectGrid(
-                  ids: [for (final p in list!) p.assetId],
+                  ids: ids,
                   selected: selected,
                   enabled: !uploading,
                   onChanged: _setSelected,
@@ -489,6 +491,13 @@ class _PhotoUploadPageState extends ConsumerState<PhotoUploadPage> {
                                 ? selected.difference({id})
                                 : {...selected, id},
                           ),
+                    onLongPress: () => _openViewer(
+                      context,
+                      ids,
+                      id,
+                      selected,
+                      uploading ? null : _setSelected,
+                    ),
                   ),
                 ),
               ),
@@ -524,20 +533,40 @@ class _PhotoUploadPageState extends ConsumerState<PhotoUploadPage> {
   }
 }
 
+void _openViewer(
+  BuildContext context,
+  List<String> ids,
+  String id,
+  Set<String> selected,
+  ValueChanged<Set<String>>? onChanged,
+) => Navigator.of(context).push(
+  MaterialPageRoute<void>(
+    builder: (_) => LocalPhotoViewerPage(
+      ids: ids,
+      initialIndex: ids.indexOf(id),
+      selected: selected,
+      onChanged: onChanged,
+    ),
+  ),
+);
+
 class _SelectableThumbnail extends StatelessWidget {
   const _SelectableThumbnail({
     required this.assetId,
     required this.selected,
     required this.onTap,
+    required this.onLongPress,
   });
 
   final String assetId;
   final bool selected;
   final VoidCallback? onTap;
+  final VoidCallback onLongPress;
 
   @override
   Widget build(BuildContext context) => GestureDetector(
     onTap: onTap,
+    onLongPress: onLongPress,
     child: Stack(
       fit: StackFit.expand,
       children: [
@@ -627,6 +656,17 @@ class _LibraryPickerPageState extends ConsumerState<LibraryPickerPage> {
             () => _selected.contains(id)
                 ? _selected.remove(id)
                 : _selected.add(id),
+          ),
+          onLongPress: () => _openViewer(
+            context,
+            [for (final p in _photos) p.assetId],
+            id,
+            {..._selected},
+            (next) => setState(
+              () => _selected
+                ..clear()
+                ..addAll(next),
+            ),
           ),
         ),
       ),
