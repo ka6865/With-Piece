@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app/app.dart';
 import 'core/error_reporting.dart';
+import 'core/uuid.dart';
 import 'data/repositories/repository_providers.dart';
 import 'features/scan/scan_directory.dart';
 
@@ -16,10 +17,13 @@ Future<void> main() async {
   const sentryDsn = String.fromEnvironment('SENTRY_DSN');
   // 릴리즈 빌드이고 접속값이 있을 때만 오류를 보낸다(설계 12.1)
   if (!kReleaseMode || sentryDsn.isEmpty) return _start();
+  WidgetsFlutterBinding.ensureInitialized();
+  final diagnosticsId = await _diagnosticsId();
   await SentryFlutter.init(
     (options) => configureSentry(
       options,
       dsn: sentryDsn,
+      installationId: diagnosticsId,
       environment: const String.fromEnvironment(
         'SENTRY_ENVIRONMENT',
         defaultValue: 'unspecified',
@@ -27,6 +31,19 @@ Future<void> main() async {
     ),
     appRunner: _start,
   );
+}
+
+Future<String?> _diagnosticsId() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    const key = 'diagnostics_installation_id';
+    final installed = prefs.getString(key);
+    if (installed != null) return installed;
+    final id = uuidV4();
+    return await prefs.setString(key, id) ? id : null;
+  } catch (_) {
+    return null;
+  }
 }
 
 Future<void> _start() async {

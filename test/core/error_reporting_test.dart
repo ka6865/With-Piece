@@ -3,82 +3,65 @@ import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:woori_piece/core/error_reporting.dart';
 
 void main() {
-  test('메시지에서 주소, 토큰, 이메일, ID, 조각 코드, 좌표를 가린다', () {
-    const raw =
-        'GET https://abc.supabase.co/storage/v1/object/sign/photos/x.heic?token=eyJhbGciOi.eyJzdWIi.sig '
-        'user a@b.com trip 3f2b1c4d-1111-2222-3333-444455556666 '
-        'region 32060 merged 38-38111 at 37.56651, 126.97801';
-    final out = scrubText(raw);
-    expect(out, isNot(contains('supabase.co')));
-    expect(out, isNot(contains('eyJ')));
-    expect(out, isNot(contains('a@b.com')));
-    expect(out, isNot(contains('3f2b1c4d')));
-    expect(out, isNot(contains('32060')));
-    expect(out, isNot(contains('38111')));
-    expect(out, isNot(contains('37.56651')));
-    expect(out, isNot(contains('126.97801')));
-    // 원인을 알 수 있는 말은 남긴다
-    expect(out, contains('trip'));
-    expect(out, contains('region'));
-  });
-
-  test('보내기 전에 사용자 정보와 요청을 빼고 메시지와 예외를 가린다', () {
+  test('오류 종류와 별도로 제공한 진단 ID만 보낸다', () {
     final event = SentryEvent(
-      message: SentryMessage('failed for a@b.com'),
-      exceptions: [
-        SentryException(
-          type: 'PostgrestException',
-          value: 'trip 3f2b1c4d-1111-2222-3333-444455556666 not found',
-        ),
-      ],
-      user: SentryUser(id: 'install-1', email: 'a@b.com', ipAddress: '1.2.3.4'),
-      request: SentryRequest(url: 'https://abc.supabase.co/rest/v1/trips'),
-      transaction: '/trips/3f2b1c4d-1111-2222-3333-444455556666',
+      exceptions: [SentryException(type: 'StateError', value: 'a@b.com')],
+      user: SentryUser(
+        id: 'account-id',
+        email: 'a@b.com',
+        ipAddress: '1.2.3.4',
+      ),
+      request: SentryRequest(url: 'https://example.com/photos'),
     );
-    final out = scrubEvent(event, Hint())!;
-    expect(out.message!.formatted, isNot(contains('a@b.com')));
-    expect(out.exceptions!.single.type, 'PostgrestException');
-    expect(out.exceptions!.single.value, isNot(contains('3f2b1c4d')));
-    // 설치별 익명 ID만 남는다
+    final out = scrubEvent(event, Hint(), installationId: 'install-1')!;
+    expect(out.exceptions!.single.type, 'StateError');
+    expect(out.exceptions!.single.value, isNull);
     expect(out.user!.id, 'install-1');
     expect(out.user!.email, isNull);
     expect(out.user!.ipAddress, isNull);
     expect(out.request, isNull);
-    expect(out.transaction, isNot(contains('3f2b1c4d')));
   });
 
-  test('네트워크, 화면 이동, 터치 기록은 버리고 나머지는 가려서 남긴다', () {
+  test('메시지 이벤트와 부착 파일을 보내지 않는다', () {
     expect(
-      scrubBreadcrumb(
-        Breadcrumb.http(url: Uri.parse('https://x.co'), method: 'GET'),
-        Hint(),
-      ),
+      scrubEvent(SentryEvent(message: SentryMessage('메모')), Hint()),
       isNull,
     );
-    expect(
-      scrubBreadcrumb(
-        Breadcrumb(category: 'navigation', message: '/regions/32060'),
-        Hint(),
-      ),
-      isNull,
+    final event = SentryEvent(
+      exceptions: [SentryException(type: 'StateError', value: null)],
     );
-    expect(
-      scrubBreadcrumb(
-        Breadcrumb(category: 'ui.click', message: '속초 여행'),
-        Hint(),
-      ),
-      isNull,
+    final hint = Hint.withAttachment(SentryAttachment.fromIntList([1], 'a'));
+    expect(scrubEvent(event, hint), isNotNull);
+    expect(hint.attachments, isEmpty);
+  });
+
+  test('허용한 항목만 남기고 계정 ID와 자유 입력을 버린다', () {
+    final event = SentryEvent(
+      message: SentryMessage('비공개 여행 제목', params: ['비공개 메모']),
+      exceptions: [
+        SentryException(
+          type: 'StateError',
+          value: '비공개 댓글',
+          stackTrace: SentryStackTrace(
+            frames: [
+              SentryStackFrame(
+                fileName: 'package:woori_piece/main.dart',
+                lineNo: 42,
+                vars: {'memo': '비공개 변수'},
+              ),
+            ],
+          ),
+        ),
+      ],
+      user: SentryUser(id: 'account-id'),
+      tags: {'memo': '비공개 태그'},
+      breadcrumbs: [Breadcrumb(message: '비공개 기록')],
     );
-    final kept = scrubBreadcrumb(
-      Breadcrumb(
-        category: 'app.lifecycle',
-        message: 'region 32060',
-        data: {'k': 'v'},
-      ),
-      Hint(),
-    )!;
-    expect(kept.message, isNot(contains('32060')));
-    expect(kept.data, isNull);
+    final json = scrubEvent(event, Hint())!.toJson();
+    expect(json.toString(), isNot(contains('비공개')));
+    expect(json.toString(), isNot(contains('account-id')));
+    expect(json.toString(), contains('StateError'));
+    expect(json.toString(), contains('main.dart'));
   });
 
   test('화면 캡처, 화면 구조, 성능 추적, 자동 기록을 끈다', () {
@@ -90,6 +73,10 @@ void main() {
     );
     expect(options.dsn, 'https://k@o.ingest.sentry.io/1');
     expect(options.environment, 'dev-cloud');
+    expect(options.autoInitializeNativeSdk, isFalse);
+    expect(options.enableAutoSessionTracking, isFalse);
+    expect(options.enableNativeCrashHandling, isFalse);
+    expect(options.sendClientReports, isFalse);
     expect(options.sendDefaultPii, isFalse);
     expect(options.attachScreenshot, isFalse);
     expect(options.attachViewHierarchy, isFalse);
