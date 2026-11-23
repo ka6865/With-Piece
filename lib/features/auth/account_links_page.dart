@@ -13,6 +13,7 @@ import 'login_page.dart';
 import '../scan/rescan.dart';
 import '../scan/scan_providers.dart';
 import '../scan/scan_store.dart';
+import '../trip/photo_upload_page.dart';
 
 // 여러 로그인 방법을 한 계정에 묶는다. Kakao는 이메일이 없어 자동 연동되지 않는다(설계 10.2)
 class AccountLinksPage extends ConsumerStatefulWidget {
@@ -44,6 +45,7 @@ class _AccountLinksPageState extends ConsumerState<AccountLinksPage> {
   @override
   Widget build(BuildContext context) {
     final auth = ref.watch(authRepositoryProvider);
+    final couple = ref.watch(scopedCurrentCoupleProvider).value;
     final userId = ref.watch(sessionUserIdProvider);
     final identities = userId == null
         ? const AsyncLoading<List<UserIdentity>>()
@@ -88,11 +90,21 @@ class _AccountLinksPageState extends ConsumerState<AccountLinksPage> {
                   onTap: () async => toastOnError(await auth.link(provider)),
                 ),
             const Divider(),
-            if (ref.watch(scopedCurrentCoupleProvider).value != null) ...[
+            if (couple != null) ...[
               ListTile(
                 title: const Text('사귄 날 수정'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => context.push('/started-on?edit=true'),
+              ),
+              ListTile(
+                title: const Text('커플 사진 사용량'),
+                subtitle: switch (ref.watch(photoUsageProvider(couple.id))) {
+                  AsyncData(:final value) => Text(
+                    '${value.count} / ${value.limit}장${value.limit > 0 && value.count * 10 >= value.limit * 9 ? ' · 한도에 가까워요' : ''}',
+                  ),
+                  AsyncError() => const Text('사용량을 불러오지 못했어요'),
+                  _ => const Text('불러오는 중…'),
+                },
               ),
             ],
             // 커플이면 다시 스캔과 비교할 기록 선택은 최신화 탭에 있다. 탭이 없는

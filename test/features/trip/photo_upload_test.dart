@@ -7,8 +7,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:woori_piece/core/supabase/supabase_providers.dart';
 import 'package:woori_piece/core/result/result.dart';
+import 'package:woori_piece/data/repositories/couple_repository.dart';
 import 'package:woori_piece/data/repositories/photo_repository.dart';
 import 'package:woori_piece/features/scan/trip_candidates.dart';
+import 'package:woori_piece/features/auth/auth_state.dart';
 import 'package:woori_piece/features/trip/local_photo_viewer.dart';
 import 'package:woori_piece/features/trip/photo_selection.dart';
 import 'package:woori_piece/features/trip/photo_upload_page.dart';
@@ -32,6 +34,10 @@ class FakePhotoRepository implements PhotoRepository {
   final calls = <UploadCall>[];
   final failFirst = <int>{};
   final failAlways = <int>{};
+  var currentUsage = const PhotoUsage(0, 1000);
+
+  @override
+  Future<Result<PhotoUsage>> usage(String coupleId) async => Ok(currentUsage);
 
   @override
   Future<Result<List<PhotoRecord>>> forCouple(String coupleId) async =>
@@ -124,6 +130,55 @@ void main() {
     await tester.pumpAndSettle();
     return repo;
   }
+
+  testWidgets('한국 시간 사귄 날부터 고를 수 있고 남은 업로드 한도를 알려 준다', (tester) async {
+    final cutoff = DateTime.utc(2026, 10, 2, 15);
+    final repo = FakePhotoRepository()
+      ..currentUsage = const PhotoUsage(999, 1000);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(testPrefs),
+          sessionUserIdProvider.overrideWithValue(null),
+          scopedCurrentCoupleProvider.overrideWithValue(
+            AsyncData(
+              Couple(
+                id: 'c1',
+                partnerId: 'p',
+                startedOn: DateTime(2026, 10, 3),
+              ),
+            ),
+          ),
+          tripLocalPhotosProvider(query).overrideWith(
+            (ref) async => [
+              LocalPhoto(
+                assetId: 'before',
+                takenAt: cutoff.subtract(const Duration(milliseconds: 1)),
+                regionId: null,
+              ),
+              LocalPhoto(assetId: 'boundary', takenAt: cutoff, regionId: null),
+            ],
+          ),
+          photoRepositoryProvider.overrideWithValue(repo),
+        ],
+        child: MaterialApp(home: PhotoUploadPage(query: query)),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byWidgetPredicate(
+        (w) => w is LocalThumbnail && w.assetId == 'before',
+      ),
+      findsNothing,
+    );
+    expect(
+      find.byWidgetPredicate(
+        (w) => w is LocalThumbnail && w.assetId == 'boundary',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('커플 사진을 1장 더 올릴 수 있어요'), findsOneWidget);
+  });
 
   testWidgets('미리 골라 두지 않고 직접 고른 사진만 올린다', (tester) async {
     await pump(tester);
@@ -340,6 +395,9 @@ void main() {
         ProviderScope(
           overrides: [
             sessionUserIdProvider.overrideWithValue('u1'),
+            currentCoupleProvider.overrideWith(
+              (ref) async => const Couple(id: 'c1', partnerId: 'p'),
+            ),
             sharedPreferencesProvider.overrideWithValue(prefs),
             tripLocalPhotosProvider(query).overrideWith((ref) async => photos),
             photoRepositoryProvider.overrideWithValue(repo),
