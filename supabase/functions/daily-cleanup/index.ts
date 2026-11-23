@@ -10,11 +10,16 @@ const BATCH = 500;
 
 Deno.serve(async (req) => {
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  // 새 비밀 키는 JWT가 아니므로 플랫폼 JWT 검사 대신 직접 비교한다(config.toml verify_jwt = false)
-  if (req.headers.get("Authorization") !== `Bearer ${serviceKey}`) {
+  const supabase = createClient(Deno.env.get("SUPABASE_URL")!, serviceKey);
+  // 새 비밀 키는 JWT가 아니므로 플랫폼 JWT 검사 대신 직접 비교한다(config.toml verify_jwt = false).
+  // pg_cron은 서비스 키 대신 DB가 만든 Vault 토큰을 보내므로 서비스 키가 DB 밖으로 나가지 않는다
+  const header = req.headers.get("Authorization") ?? "";
+  const token = header.startsWith("Bearer ") ? header.slice(7) : "";
+  const authorized = token !== "" && (token === serviceKey ||
+    (await supabase.rpc("cleanup_token_valid", { p_token: token })).data === true);
+  if (!authorized) {
     return new Response("unauthorized", { status: 401 });
   }
-  const supabase = createClient(Deno.env.get("SUPABASE_URL")!, serviceKey);
 
   const logFailure = (phase: string, error: unknown, userId?: string) => {
     const message = String(error && typeof error === "object" && "message" in error
