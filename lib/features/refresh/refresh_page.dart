@@ -152,6 +152,10 @@ class _RefreshPageState extends ConsumerState<RefreshPage> {
                         : const Icon(Icons.refresh),
                     label: Text(_scanning ? '사진을 읽는 중' : '최신화하기'),
                   ),
+                  TextButton(
+                    onPressed: () => context.push('/settings/photo-sharing'),
+                    child: const Text('비교 승인 기록 관리'),
+                  ),
                 ],
               ),
             ),

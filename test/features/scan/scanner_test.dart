@@ -15,11 +15,14 @@ class FakeLibrary extends PhotoLibraryRepository {
   FakeLibrary(this.result);
 
   final Result<PhotoScan> result;
-  final sinceCalls = <DateTime?>[];
+  final windows = <({DateTime? since, DateTime until})>[];
 
   @override
-  Future<Result<PhotoScan>> readLocatedPhotos({DateTime? since}) async {
-    sinceCalls.add(since);
+  Future<Result<PhotoScan>> readLocatedPhotos({
+    DateTime? since,
+    DateTime? until,
+  }) async {
+    windows.add((since: since, until: until!));
     return result;
   }
 }
@@ -29,12 +32,15 @@ class PausingLibrary extends PhotoLibraryRepository {
 
   final Completer<void> started;
   final Completer<void> release;
-  final sinceCalls = <DateTime?>[];
+  final windows = <({DateTime? since, DateTime until})>[];
 
   @override
-  Future<Result<PhotoScan>> readLocatedPhotos({DateTime? since}) async {
-    sinceCalls.add(since);
-    if (sinceCalls.length == 1) {
+  Future<Result<PhotoScan>> readLocatedPhotos({
+    DateTime? since,
+    DateTime? until,
+  }) async {
+    windows.add((since: since, until: until!));
+    if (windows.length == 1) {
       started.complete();
       await release.future;
     }
@@ -64,7 +70,8 @@ void main() {
     await store.write(ScanSnapshot({sokcho: 2}, DateTime(2026, 11, 1)));
     final library = FakeLibrary(Ok((total: 1, located: [sokchoPhoto])));
     final result = await Scanner(library, locator, store).scan();
-    expect(library.sinceCalls, [DateTime(2026, 11, 1)]);
+    expect(library.windows.single.since, DateTime(2026, 11, 1).toUtc());
+    expect(library.windows.single.until, isNotNull);
     expect(result.valueOrThrow.days, {sokcho: 3});
     expect((await store.read()).days, {sokcho: 3});
   });
@@ -73,7 +80,8 @@ void main() {
     await store.write(ScanSnapshot({sokcho: 9}, DateTime(2026, 11, 1)));
     final library = FakeLibrary(Ok((total: 1, located: [sokchoPhoto])));
     await Scanner(library, locator, store).scan(full: true);
-    expect(library.sinceCalls, [null]);
+    expect(library.windows.single.since, isNull);
+    expect(library.windows.single.until, isNotNull);
     expect((await store.read()).days, {sokcho: 1});
   });
 
@@ -101,13 +109,14 @@ void main() {
     await started.future;
     final incremental = scanner.scan();
     await Future<void>.delayed(Duration.zero);
-    expect(library.sinceCalls, [null]);
+    expect(library.windows.map((window) => window.since), [null]);
 
     release.complete();
     await full;
     await incremental;
-    expect(library.sinceCalls[0], isNull);
-    expect(library.sinceCalls[1], isNotNull);
+    expect(library.windows[0].since, isNull);
+    expect(library.windows[1].since, isNotNull);
+    expect(library.windows[1].since, library.windows[0].until);
   });
 
   test('삭제 대기 중에는 사진첩을 다시 읽지 않는다', () async {
@@ -117,6 +126,6 @@ void main() {
     final result = await Scanner(library, locator, store).scan(full: true);
 
     expect(result, isA<Err<ScanSnapshot>>());
-    expect(library.sinceCalls, isEmpty);
+    expect(library.windows, isEmpty);
   });
 }
