@@ -42,6 +42,11 @@ class HomePage extends ConsumerWidget {
     final photos = scope == null
         ? null
         : ref.watch(scopedCouplePhotosProvider(scope)).value;
+    // 시작 시 세션·커플을 읽는 동안 라우터는 '/'에 머문다. 이때 빈 지도를 그리면
+    // 로그인·초대 화면으로 넘어가기 전에 지도가 잠깐 보인다
+    if (couple == null && ref.watch(appStageProvider) == AppStage.loading) {
+      return const Scaffold();
+    }
     return Scaffold(
       body: SafeArea(
         child: ListView(

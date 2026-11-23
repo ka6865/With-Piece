@@ -163,6 +163,11 @@ void main() {
     expect(find.text('함께 간 여행 1개를 찾았어요'), findsNothing);
   });
 
+  testWidgets('로그인·커플 확인 전에는 빈 지도를 먼저 그리지 않는다', (tester) async {
+    await pumpApp(tester, stage: AppStage.loading, settle: false);
+    expect(find.byType(MiniPuzzleMap), findsNothing);
+  });
+
   testWidgets('우리의 조각 카드를 누르면 지도 탭으로 간다', (tester) async {
     await pumpApp(tester);
     await tester.tap(find.text('우리의 조각'));
