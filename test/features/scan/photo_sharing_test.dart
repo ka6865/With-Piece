@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -141,6 +142,95 @@ void main() {
           .every((t) => t.value == true),
       isTrue,
     );
+  });
+
+  testWidgets('사진 권한 오류가 나도 서버 승인은 표시하고 철회할 수 있다', (tester) async {
+    final repo = _SharingRepo({day: 7});
+    Map<PhotoDay, bool>? saved;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sessionUserIdProvider.overrideWithValue('me'),
+          currentCoupleProvider.overrideWith(
+            (ref) async => Couple(
+              id: 'c1',
+              partnerId: 'partner',
+              startedOn: DateTime(2026, 1, 1),
+            ),
+          ),
+          scanSnapshotProvider.overrideWith((ref, userId) async {
+            throw AppError.photoPermission;
+          }),
+          regionNamesProvider.overrideWith((ref) async => {'32060': '속초시'}),
+          photoSharingRepositoryProvider.overrideWithValue(repo),
+          savePhotoSharingProvider.overrideWithValue((choices, changes) async {
+            saved = changes;
+            return const Ok(null);
+          }),
+        ],
+        child: const MaterialApp(home: PhotoSharingPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('속초시'), findsOneWidget);
+    expect(
+      tester.widget<CheckboxListTile>(find.byType(CheckboxListTile)).value,
+      true,
+    );
+    await tester.tap(find.text('속초시'));
+    await tester.tap(find.text('비교 범위 저장'));
+    await tester.pumpAndSettle();
+    expect(saved, {day: false});
+  });
+
+  testWidgets('스캔이 끝나기 전에도 서버 승인을 관리할 수 있다', (tester) async {
+    final scan = Completer<ScanSnapshot>();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sessionUserIdProvider.overrideWithValue('me'),
+          currentCoupleProvider.overrideWith(
+            (ref) async => Couple(
+              id: 'c1',
+              partnerId: 'partner',
+              startedOn: DateTime(2026, 1, 1),
+            ),
+          ),
+          scanSnapshotProvider.overrideWith((ref, userId) => scan.future),
+          regionNamesProvider.overrideWith((ref) async => {'32060': '속초시'}),
+          photoSharingRepositoryProvider.overrideWithValue(
+            _SharingRepo({day: 7}),
+          ),
+        ],
+        child: const MaterialApp(home: PhotoSharingPage()),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('속초시'), findsOneWidget);
+  });
+
+  test('신규 승인은 로컬 스캔 기록만 허용한다', () async {
+    final repository = _SharingRepo({});
+    final container = ProviderContainer(
+      overrides: [
+        photoSharingRepositoryProvider.overrideWithValue(repository),
+        refreshRepositoryProvider.overrideWithValue(_RefreshRepo()),
+      ],
+    );
+    addTearDown(container.dispose);
+    final save = container.read(savePhotoSharingProvider);
+    await save(
+      PhotoSharingChoices(
+        coupleId: 'c1',
+        days: {day: 7},
+        approved: {},
+        names: const {},
+        approvableDays: const {},
+      ),
+      {day: true},
+    );
+    expect(repository.approved, isEmpty);
   });
 
   for (final success in [true, false]) {
@@ -413,6 +503,7 @@ void main() {
               days: days,
               approved: {},
               names: const {},
+              approvableDays: days,
             ),
           ),
         ],

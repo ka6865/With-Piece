@@ -236,7 +236,7 @@ Future<void> main() async {
                   'height': 1,
                   'byte_size': 1,
                   'region_id': '32060',
-                  'taken_at': '2026-10-03T12:00:00Z',
+                  'taken_at': '2026-10-04T12:00:00Z',
                 })
                 .select('id')
                 .single())['id']

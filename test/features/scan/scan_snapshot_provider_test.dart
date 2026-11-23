@@ -17,7 +17,10 @@ class _Library extends PhotoLibraryRepository {
   var reads = 0;
 
   @override
-  Future<Result<PhotoScan>> readLocatedPhotos({DateTime? since}) async {
+  Future<Result<PhotoScan>> readLocatedPhotos({
+    DateTime? since,
+    DateTime? until,
+  }) async {
     reads++;
     return const Ok((total: 0, located: <PhotoMeta>[]));
   }

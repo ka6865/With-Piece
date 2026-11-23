@@ -8,6 +8,7 @@ import 'comment_repository.dart';
 import 'couple_repository.dart';
 import 'photo_library_repository.dart';
 import 'refresh_repository.dart';
+import 'report_repository.dart';
 import 'region_cover_repository.dart';
 import 'trip_repository.dart';
 
@@ -41,6 +42,10 @@ final accountRepositoryProvider = Provider<AccountRepository>(
 
 final commentRepositoryProvider = Provider<CommentRepository>(
   (ref) => CommentRepository(ref.watch(supabaseClientProvider)),
+);
+
+final reportRepositoryProvider = Provider<ReportRepository>(
+  (ref) => ReportRepository(ref.watch(supabaseClientProvider)),
 );
 
 final refreshRepositoryProvider = Provider<RefreshRepository>(

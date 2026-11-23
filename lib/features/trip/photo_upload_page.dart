@@ -16,6 +16,7 @@ import '../../data/repositories/photo_repository.dart';
 import '../../data/repositories/repository_providers.dart';
 import '../../data/repositories/trip_repository.dart';
 import '../album/pinch_columns.dart';
+import '../auth/auth_state.dart';
 import '../scan/scan_providers.dart';
 import '../scan/trip_candidates.dart';
 import 'drag_select_grid.dart';
@@ -53,6 +54,13 @@ final photoRepositoryProvider = Provider<PhotoRepository>(
   (ref) =>
       PhotoRepository(ref.watch(supabaseClientProvider), const HeicEncoder()),
 );
+
+final photoUsageProvider = FutureProvider.autoDispose
+    .family<PhotoUsage, String>(
+      (ref, coupleId) async =>
+          (await ref.watch(photoRepositoryProvider).usage(coupleId))
+              .valueOrThrow,
+    );
 
 final originalBytesProvider =
     Provider<Future<Uint8List?> Function(String, PMCancelToken)>(
@@ -305,14 +313,29 @@ class _PhotoUploadPageState extends ConsumerState<PhotoUploadPage> {
     }
   }
 
-  Future<void> _upload(List<LocalPhoto> photos) async {
+  Future<void> _upload(List<LocalPhoto> photos, Set<String> selected) async {
+    final userId = ref.read(sessionUserIdProvider);
+    final couple = ref.read(scopedCurrentCoupleProvider).value;
+    if (_done != null ||
+        (userId != null && couple?.id != widget.query.coupleId)) {
+      return;
+    }
+
     final chosen = [
-      for (final p in photos)
-        if (_selected!.contains(p.assetId)) p,
+      for (final photo in photos)
+        if (selected.contains(photo.assetId) &&
+            !_isBeforeStartedOn(photo.takenAt, couple?.startedOn))
+          photo,
     ];
+    if (chosen.length < selected.length) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('사귄 날 이전 사진은 올릴 수 없어요')));
+    }
+    if (chosen.isEmpty) return;
+    var quotaExceeded = false;
     final repo = ref.read(photoRepositoryProvider);
     final readOriginal = ref.read(originalBytesProvider);
-    final userId = ref.read(sessionUserIdProvider);
     final prefs = userId == null ? null : ref.read(sharedPreferencesProvider);
     if (prefs != null) _sweepPendingIds(prefs);
     final failed = <LocalPhoto>[];
@@ -369,7 +392,10 @@ class _PhotoUploadPageState extends ConsumerState<PhotoUploadPage> {
           ),
           _uploadTimeout,
         );
-        if (result is! Ok) {
+        if (result case Err(error: AppError.quotaExceeded)) {
+          failed.add(photo);
+          quotaExceeded = true;
+        } else if (result is! Ok) {
           failed.add(photo);
         } else {
           done.add(photo);
@@ -392,7 +418,10 @@ class _PhotoUploadPageState extends ConsumerState<PhotoUploadPage> {
     setState(() => _done = 0);
     var next = 0;
     Future<void> worker() async {
-      while (!_stopRequested && mounted && next < chosen.length) {
+      while (!_stopRequested &&
+          !quotaExceeded &&
+          mounted &&
+          next < chosen.length) {
         final photo = chosen[next++];
         await uploadOne(photo);
         if (mounted) setState(() => _done = _done! + 1);
@@ -401,7 +430,10 @@ class _PhotoUploadPageState extends ConsumerState<PhotoUploadPage> {
 
     await Future.wait([for (var i = 0; i < uploadWorkers; i++) worker()]);
     if (!mounted) return;
-    if (!_stopRequested && ref.read(sessionUserIdProvider) == userId) {
+    ref.invalidate(photoUsageProvider(widget.query.coupleId));
+    if (!_stopRequested &&
+        !quotaExceeded &&
+        ref.read(sessionUserIdProvider) == userId) {
       await _offerRegions(regionsOutsideTrip(done, widget.query.regionIds));
     }
     if (!mounted) return;
@@ -412,6 +444,12 @@ class _PhotoUploadPageState extends ConsumerState<PhotoUploadPage> {
       _selected = pending.map((photo) => photo.assetId).toSet();
       _done = null;
     });
+    if (quotaExceeded) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('커플 사진 한도에 도달했어요. ${done.length}장을 올렸어요')),
+      );
+      return;
+    }
     if (stopped) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('올리기를 중단했어요. ${done.length}장을 올렸어요')),
@@ -438,14 +476,25 @@ class _PhotoUploadPageState extends ConsumerState<PhotoUploadPage> {
     final inRange = photos.value;
     // 미리 골라 두지 않는다. 사용자가 직접 고른다(2026-11-20 사용자 결정, 설계 8.0)
     if (inRange != null) _selected ??= {};
+    final couple = ref.watch(scopedCurrentCoupleProvider).value;
+    final usage = couple?.id == widget.query.coupleId
+        ? ref.watch(photoUsageProvider(widget.query.coupleId)).value
+        : null;
     final list = inRange == null
         ? null
         : [
-            ...inRange,
-            ..._extra.where((e) => !inRange.any((p) => p.assetId == e.assetId)),
+            for (final photo in inRange)
+              if (!_isBeforeStartedOn(photo.takenAt, couple?.startedOn)) photo,
+            for (final photo in _extra)
+              if (!_isBeforeStartedOn(photo.takenAt, couple?.startedOn) &&
+                  !inRange.any((p) => p.assetId == photo.assetId))
+                photo,
           ];
-    final selected = _selected ?? const <String>{};
     final ids = [for (final p in list ?? const <LocalPhoto>[]) p.assetId];
+    final selected = {
+      for (final id in ids)
+        if (_selected?.contains(id) ?? false) id,
+    };
     final uploading = _done != null;
     return PopScope(
       canPop: !uploading,
@@ -471,6 +520,10 @@ class _PhotoUploadPageState extends ConsumerState<PhotoUploadPage> {
         body: switch (photos) {
           AsyncValue(hasValue: true) => Column(
             children: [
+              if (usage != null && usage.count * 10 >= usage.limit * 9)
+                Text(
+                  '커플 사진을 ${(usage.limit - usage.count).clamp(0, usage.limit)}장 더 올릴 수 있어요',
+                ),
               TextButton.icon(
                 icon: const Icon(Icons.photo_library),
                 label: const Text('사진첩에서 더 고르기'),
@@ -523,7 +576,7 @@ class _PhotoUploadPageState extends ConsumerState<PhotoUploadPage> {
             child: FilledButton(
               onPressed: list == null || selected.isEmpty || uploading
                   ? null
-                  : () => _upload(list),
+                  : () => _upload(list, selected),
               child: Text(
                 uploading
                     ? '$_done / ${selected.length} 올리는 중'
@@ -587,7 +640,13 @@ class _SelectableThumbnail extends StatelessWidget {
   );
 }
 
-// 사진첩 전체를 최신순으로 보며 여러 장을 고른다. 날짜·위치와 무관하게 고를 수 있다
+bool _isBeforeStartedOn(DateTime takenAt, DateTime? startedOn) =>
+    startedOn != null &&
+    takenAt.toUtc().isBefore(
+      DateTime.utc(startedOn.year, startedOn.month, startedOn.day, -9),
+    );
+
+// 사귄 날 이후 사진을 최신순으로 보며 여러 장을 고른다.
 class LibraryPickerPage extends ConsumerStatefulWidget {
   const LibraryPickerPage({super.key});
 
@@ -614,6 +673,7 @@ class _LibraryPickerPageState extends ConsumerState<LibraryPickerPage> {
     if (_loading || _exhausted) return;
     setState(() => _loading = true);
     final locator = await ref.read(regionLocatorProvider.future);
+    final startedOn = ref.read(scopedCurrentCoupleProvider).value?.startedOn;
     final result = await ref
         .read(photoLibraryRepositoryProvider)
         .recentPhotos(page: _page, size: LibraryPickerPage.pageSize);
@@ -625,13 +685,14 @@ class _LibraryPickerPageState extends ConsumerState<LibraryPickerPage> {
         _exhausted = value.length < LibraryPickerPage.pageSize;
         _photos.addAll([
           for (final p in value)
-            LocalPhoto(
-              assetId: p.id,
-              takenAt: p.takenAt,
-              regionId: p.location == null
-                  ? null
-                  : locator.regionAt(p.location!),
-            ),
+            if (!_isBeforeStartedOn(p.takenAt, startedOn))
+              LocalPhoto(
+                assetId: p.id,
+                takenAt: p.takenAt,
+                regionId: p.location == null
+                    ? null
+                    : locator.regionAt(p.location!),
+              ),
         ]);
       } else {
         _exhausted = true;

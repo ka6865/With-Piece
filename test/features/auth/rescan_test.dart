@@ -17,7 +17,10 @@ class FakePhotoLibrary extends PhotoLibraryRepository {
   final sinceValues = <DateTime?>[];
 
   @override
-  Future<Result<PhotoScan>> readLocatedPhotos({DateTime? since}) async {
+  Future<Result<PhotoScan>> readLocatedPhotos({
+    DateTime? since,
+    DateTime? until,
+  }) async {
     sinceValues.add(since);
     return result;
   }

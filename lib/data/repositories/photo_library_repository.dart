@@ -22,22 +22,37 @@ class PhotoLibraryRepository {
       ) ==
       PermissionState.authorized;
 
-  // since가 있으면 그 뒤에 생성된 사진만 읽는다(증분 스캔)
-  Future<Result<PhotoScan>> readLocatedPhotos({DateTime? since}) async {
+  // 스캔 구간은 이전 상한을 제외한다. 기기마다 다른 날짜 정밀도에도 빈 구간이 없다.
+  Future<Result<PhotoScan>> readLocatedPhotos({
+    DateTime? since,
+    DateTime? until,
+  }) async {
     final permission = await PhotoManager.requestPermissionExtend();
     // 선택한 사진만 허용한 상태에서는 자동 채우기가 동작하지 않는다
     if (permission != PermissionState.authorized) {
       return const Err(AppError.photoPermission);
     }
     return guard(() async {
+      final end = (until ?? DateTime.now()).toUtc();
+      final start = since?.toUtc();
       final paths = await PhotoManager.getAssetPathList(
         type: RequestType.image,
         onlyAll: true,
-        filterOption: since == null
-            ? null
-            : FilterOptionGroup(
-                createTimeCond: DateTimeCond(min: since, max: DateTime.now()),
+        filterOption: AdvancedCustomFilter(
+          where: [
+            if (start != null)
+              DateColumnWhereCondition(
+                column: CustomColumns.base.createDate,
+                operator: '>',
+                value: start,
               ),
+            DateColumnWhereCondition(
+              column: CustomColumns.base.createDate,
+              operator: '<=',
+              value: end,
+            ),
+          ],
+        ),
       );
       if (paths.isEmpty) return (total: 0, located: <PhotoMeta>[]);
       final all = paths.single;

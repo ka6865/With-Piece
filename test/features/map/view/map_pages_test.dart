@@ -51,6 +51,30 @@ void main() {
     expect(find.text('0 / 1'), findsOneWidget);
   });
 
+  testWidgets('전국 진행률의 시도 버튼도 해당 시도로 이동한다', (tester) async {
+    await tester.pumpWidget(appAt('/map'));
+    await tester.pumpAndSettle();
+    final seoul = find.widgetWithText(TextButton, '서울특별시');
+    expect(tester.getSize(seoul).height, greaterThanOrEqualTo(44));
+    await tester.tap(seoul);
+    await tester.pumpAndSettle();
+    expect(find.text('0 / 25 조각'), findsOneWidget);
+  });
+
+  testWidgets('시도 조각 목록에서 울릉군을 선택한다', (tester) async {
+    await tester.pumpWidget(appAt('/province/37'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('조각 목록'));
+    await tester.pumpAndSettle();
+    final county = find.widgetWithText(ListTile, '울릉군');
+    await tester.scrollUntilVisible(county, 200);
+    expect(tester.getSize(county).height, greaterThanOrEqualTo(44));
+    await tester.tap(county);
+    await tester.pumpAndSettle();
+    expect(find.text('여행 만들기'), findsOneWidget);
+    expect(find.text('울릉군'), findsOneWidget);
+  });
+
   testWidgets('시도 코드를 탭하면 해당 시도 화면으로 간다', (tester) async {
     await tester.pumpWidget(appAt('/map'));
     await tester.pumpAndSettle();

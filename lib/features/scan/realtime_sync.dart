@@ -12,6 +12,7 @@ import '../auth/account_state.dart';
 import '../auth/auth_state.dart';
 import '../map/region_covers.dart';
 import '../refresh/refresh_providers.dart';
+import '../trip/photo_upload_page.dart';
 import 'photo_sharing_page.dart';
 import 'scan_providers.dart';
 
@@ -159,7 +160,10 @@ final realtimeSyncProvider = Provider<void>((ref) {
     );
     on('trips', () => ref.invalidate(tripsProvider));
     on('overrides', () => ref.invalidate(overridesProvider));
-    on('photos', () => ref.invalidate(couplePhotosProvider));
+    on('photos', () {
+      ref.invalidate(couplePhotosProvider);
+      ref.invalidate(photoUsageProvider(nextId));
+    });
     on('comments', refreshComments);
     on('refresh', () => ref.invalidate(refreshStatesProvider));
     on('covers', () => ref.invalidate(regionCoversProvider));

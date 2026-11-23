@@ -40,7 +40,7 @@ Kakao 로그인을 로컬에서 쓰려면 `supabase/.env`에 `SUPABASE_AUTH_EXTE
 flutter build ios --release --dart-define-from-file=env/prod.json
 ```
 
-`env/prod.json`(gitignore)은 출시용 프로젝트의 `SUPABASE_URL`과 `SUPABASE_PUBLISHABLE_KEY`만 둔다.
+`env/prod.json`(gitignore)에 출시용 프로젝트의 `SUPABASE_URL`과 `SUPABASE_PUBLISHABLE_KEY`를 둔다. 오류 진단을 켜려면 `SENTRY_DSN`과 `SENTRY_ENVIRONMENT`를 추가한다.
 `DEV_SOLO`를 넣지 않는다. 넣지 않으면 초대 코드 BGMS가 일반 코드로 처리된다(설계 13.1).
 개발용 빌드는 `env/cloud.json`(개발 프로젝트, `DEV_SOLO`=true)을 쓴다.
 
@@ -55,26 +55,28 @@ flutter build ios --release --dart-define-from-file=env/prod.json
 ## 정리 작업(daily-cleanup)
 
 `supabase/functions/daily-cleanup`은 유예가 끝난 계정 삭제, 고아 사진 파일 정리, 만료 초대 정리를 한다.
-service role 키로만 호출된다. 만료된 요청을 잠가 처리 시작을 확정한 뒤 파일 삭제 → DB 관계 정리 → Auth 삭제 순서로 실행한다. 처리 시작 뒤 취소는 거부된다. 정리 중 실패한 계정은 다음 실행에서 재시도하고 다른 계정과 고아 파일은 계속 처리한다. 실패한 실행은 오류 상태로 응답한다. 클라우드에 배포한 뒤 서비스 키를 Vault에 넣고 하루 1회 일정을 건다. 정리 함수 로그와 스케줄러 HTTP 응답에서 성공과 실패를 확인한다.
+정리 작업은 만료된 요청을 잠가 처리 시작을 기록한 뒤 사진 파일 → 공동 기록 → Auth 계정 순서로 지운다. 실패하면 다음 실행에서 재시도한다. 작업은 마이그레이션이 매일 03:00 KST로 등록한다.
+
+정리 함수를 출시 프로젝트에 배포한다.
 
 ```bash
 supabase functions deploy daily-cleanup --project-ref <ref>
 ```
 
+해당 환경의 SQL Editor에서 첫 배포 때 Vault 값을 등록한다. 기존 값이 있으면 해당 비밀을 갱신한다.
+
 ```sql
-select vault.create_secret('<service role key>', 'service_role_key');
-select cron.schedule(
-  'daily-cleanup',
-  '0 18 * * *',  -- 매일 03:00 KST
-  $$ select net.http_post(
-       url := 'https://<ref>.supabase.co/functions/v1/daily-cleanup',
-       headers := jsonb_build_object('Authorization', 'Bearer ' ||
-         (select decrypted_secret from vault.decrypted_secrets where name = 'service_role_key'))
-     ) $$
+select vault.create_secret(
+  encode(extensions.gen_random_bytes(32), 'hex'), 'daily_cleanup_token'
+);
+select vault.create_secret(
+  'https://<ref>.supabase.co/functions/v1/daily-cleanup', 'daily_cleanup_url'
 );
 ```
 
-출시 환경과 관계 변경·수익화의 검증 기준은 [출시와 후속 버전 검토](docs/reviews/release-readiness.md)에 있다.
+다음 예약 실행 뒤 함수 로그와 스케줄러의 HTTP 응답에서 성공 여부를 확인한다. 토큰과 함수 주소가 준비되면 예약된 작업이 호출을 시작한다.
+
+출시 환경과 관계 변경·수익화의 검증 기준은 [출시와 후속 버전 검토](docs/reviews/release-readiness.md)에 있다. 앱 전체 리뷰와 항목별 후속 작업은 [앱 리뷰 기록](docs/reviews/2026-11-24-app-review.md)에 있다.
 
 ## 원본 기준 검증
 

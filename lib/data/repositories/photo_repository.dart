@@ -40,6 +40,13 @@ class PhotoRecord {
   String get thumbPath => pathFor('thumb');
 }
 
+class PhotoUsage {
+  const PhotoUsage(this.count, this.limit);
+
+  final int count;
+  final int limit;
+}
+
 // 사진은 상세(2048px)와 썸네일(400px) 두 객체로 올린다(설계 8.1, 8.2)
 class PhotoRepository {
   const PhotoRepository(this._client, this._encoder);
@@ -50,6 +57,15 @@ class PhotoRepository {
 
   final SupabaseClient _client;
   final ImageEncoder _encoder;
+
+  Future<Result<PhotoUsage>> usage(String coupleId) => guard(() async {
+    final row =
+        (await _client.rpc('photo_usage', params: {'p_couple_id': coupleId})
+                    as List)
+                .single
+            as Map<String, dynamic>;
+    return PhotoUsage(row['photo_count'] as int, row['photo_limit'] as int);
+  });
 
   Future<Result<String>> upload({
     String? id,
@@ -130,6 +146,14 @@ class PhotoRepository {
         }
         knownInsertRejection =
             error.code == '42501' || (error.code?.startsWith('23') == true);
+        if (error.code == 'P0001' &&
+            {
+              'photo_before_started_on',
+              'photo_limit_exceeded',
+              'trip_not_uploadable',
+            }.contains(error.message)) {
+          knownInsertRejection = true;
+        }
         rethrow;
       }
       return Ok(photoId);

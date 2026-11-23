@@ -50,6 +50,8 @@ AppError appErrorOf(Object error) => switch (error) {
   SocketException() || TimeoutException() => AppError.network,
   // 42501 RLS·권한 거부, 23xxx 제약 위반, P0001 RPC가 알린 업무 규칙 위반
   PostgrestException(code: '42501') => AppError.permissionDenied,
+  PostgrestException(code: 'P0001', message: 'photo_limit_exceeded') =>
+    AppError.quotaExceeded,
   PostgrestException(code: 'P0001') => AppError.validation,
   PostgrestException(code: final code?) when code.startsWith('23') =>
     AppError.validation,

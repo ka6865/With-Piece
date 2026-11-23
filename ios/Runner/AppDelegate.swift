@@ -1,5 +1,6 @@
 import Flutter
 import ImageIO
+import Photos
 import UIKit
 
 @main
@@ -15,6 +16,31 @@ import UIKit
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "HeicEncoderPlugin") {
       HeicEncoderPlugin.register(with: registrar)
+    }
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "PhotoExport") {
+      let channel = FlutterMethodChannel(
+        name: "kr.wooripiece/photo_export", binaryMessenger: registrar.messenger())
+      channel.setMethodCallHandler { call, result in
+        guard call.method == "save",
+          let bytes = (call.arguments as? FlutterStandardTypedData)?.data
+        else {
+          result(FlutterError(code: "bad_args", message: nil, details: nil))
+          return
+        }
+        PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
+          guard status == .authorized || status == .limited else {
+            result(FlutterError(code: "photo_permission", message: nil, details: nil))
+            return
+          }
+          PHPhotoLibrary.shared().performChanges {
+            let request = PHAssetCreationRequest.forAsset()
+            request.addResource(with: .photo, data: bytes, options: nil)
+          } completionHandler: { success, error in
+            if success { result(nil) }
+            else { result(FlutterError(code: "photo_save", message: error?.localizedDescription, details: nil)) }
+          }
+        }
+      }
     }
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "ScanCacheDirectory") {
       let channel = FlutterMethodChannel(

@@ -205,6 +205,13 @@ Future<void> main() async {
     );
   }, skip: skip);
 
+  test('커플 사진 사용량과 서버 한도를 읽는다', () async {
+    final (client, coupleId, _) = await coupleWithTrip();
+    final result = await PhotoRepository(client, FakeEncoder()).usage(coupleId);
+    expect(result.valueOrThrow.count, 0);
+    expect(result.valueOrThrow.limit, 1000);
+  }, skip: skip);
+
   test('photos 삽입이 실패하면 방금 올린 두 객체를 지운다', () async {
     final (client, coupleId, _) = await coupleWithTrip();
     const missingTrip = '00000000-0000-0000-0000-000000000000';

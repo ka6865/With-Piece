@@ -187,9 +187,16 @@ class TripRepository {
   // 지운다. 파일 삭제가 실패하거나 상대 파일이면 정리 작업이 지운다(설계 8.3)
   Future<Result<void>> deleteTrip(
     String tripId,
-    Iterable<PhotoRecord> myPhotos,
-  ) => guard(() async {
-    await _client.rpc('delete_trip', params: {'p_trip_id': tripId});
+    Iterable<PhotoRecord> myPhotos, {
+    required int expectedPhotoCount,
+  }) => guard(() async {
+    await _client.rpc(
+      'delete_trip',
+      params: {
+        'p_trip_id': tripId,
+        'p_expected_photo_count': expectedPhotoCount,
+      },
+    );
     final paths = [
       for (final p in myPhotos) ...[p.fullPath, p.thumbPath],
     ];

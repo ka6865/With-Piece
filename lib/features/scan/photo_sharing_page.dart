@@ -21,11 +21,13 @@ class PhotoSharingChoices {
     required this.days,
     required this.approved,
     required this.names,
+    this.approvableDays,
   });
   final String coupleId;
   final Map<PhotoDay, int> days;
   final Set<PhotoDay> approved;
   final Map<String, String> names;
+  final Map<PhotoDay, int>? approvableDays;
 }
 
 final photoSharingRepositoryProvider = Provider<PhotoSharingRepository>(
@@ -39,22 +41,26 @@ final photoSharingChoicesProvider = FutureProvider<PhotoSharingChoices>((
   if (userId == null) throw AppError.validation;
   final couple = await ref.watch(currentCoupleProvider.future);
   if (couple == null || couple.startedOn == null) throw AppError.validation;
-  final snapshot = await ref.watch(scanSnapshotProvider(userId).future);
   final approved =
       (await ref
               .watch(photoSharingRepositoryProvider)
               .approvedWithCounts(couple.id))
           .valueOrThrow;
   approved.removeWhere((day, _) => day.day.isBefore(couple.startedOn!));
-  return PhotoSharingChoices(
-    coupleId: couple.id,
-    days: {
+  // 서버 승인은 권한 선택이나 진행 중인 기기 스캔에 의존하지 않는다.
+  final scan = ref.watch(scanSnapshotProvider(userId));
+  final snapshot = scan.unwrapPrevious().value;
+  final localDays = {
+    if (snapshot != null)
       for (final entry in snapshot.days.entries)
         if (!entry.key.day.isBefore(couple.startedOn!)) entry.key: entry.value,
-      ...approved,
-    },
+  };
+  return PhotoSharingChoices(
+    coupleId: couple.id,
+    days: {...localDays, ...approved},
     approved: approved.keys.toSet(),
     names: await ref.watch(regionNamesProvider.future),
+    approvableDays: localDays,
   );
 });
 
@@ -63,6 +69,8 @@ final savePhotoSharingProvider =
       Future<Result<void>> Function(PhotoSharingChoices, Map<PhotoDay, bool>)
     >(
       (ref) => (choices, changes) async {
+        final approvableDays =
+            choices.approvableDays ?? const <PhotoDay, int>{};
         final result = await ref
             .read(photoSharingRepositoryProvider)
             .update(
@@ -70,8 +78,8 @@ final savePhotoSharingProvider =
               approve: {
                 // 재조회로 목록에서 빠진 날짜(사귄 날 이전 등)는 승인할 수 없다
                 for (final entry in changes.entries)
-                  if (entry.value && choices.days.containsKey(entry.key))
-                    entry.key: choices.days[entry.key]!,
+                  if (entry.value && approvableDays.containsKey(entry.key))
+                    entry.key: approvableDays[entry.key]!,
               },
               revoke: {
                 for (final entry in changes.entries)

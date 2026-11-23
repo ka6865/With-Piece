@@ -45,6 +45,8 @@
 	<true/>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>사진의 촬영 날짜와 장소로 함께 다녀온 곳을 찾아 퍼즐 지도를 채우기 위해 사진 접근이 필요합니다.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>지난 기록의 사진을 기기의 사진첩에 저장합니다.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

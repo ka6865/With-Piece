@@ -75,8 +75,46 @@ class ProvinceMapPage extends ConsumerWidget {
                     case final image?)
                   id: (image: image, cover: cover),
           };
+          void openRegion(String id) => context.push(
+            travel.contains(id) || home.contains(id)
+                ? '/regions/$id'
+                : '/trips/new?region=$id',
+          );
           return Scaffold(
-            appBar: AppBar(title: Text(province.name)),
+            appBar: AppBar(
+              title: Text(province.name),
+              actions: [
+                IconButton(
+                  tooltip: '조각 목록',
+                  icon: const Icon(Icons.list),
+                  onPressed: () async {
+                    final id = await showModalBottomSheet<String>(
+                      context: context,
+                      useSafeArea: true,
+                      builder: (context) => ListView.builder(
+                        itemCount: asset.features.length,
+                        itemBuilder: (context, index) {
+                          final region = asset.features[index];
+                          return ListTile(
+                            minTileHeight: 48,
+                            title: Text(region.name),
+                            subtitle: Text(
+                              home.contains(region.id)
+                                  ? '생활권'
+                                  : travel.contains(region.id)
+                                  ? '방문'
+                                  : '미방문',
+                            ),
+                            onTap: () => Navigator.pop(context, region.id),
+                          );
+                        },
+                      ),
+                    );
+                    if (id != null && context.mounted) openRegion(id);
+                  },
+                ),
+              ],
+            ),
             body: Column(
               children: [
                 Expanded(
@@ -88,11 +126,7 @@ class ProvinceMapPage extends ConsumerWidget {
                       homeRegionIds: home,
                       covers: covers,
                       // 채운 조각은 조각 화면, 빈 조각은 수동 여행 만들기(설계 5.5, 4.3)
-                      onRegionTap: (id) => context.push(
-                        travel.contains(id) || home.contains(id)
-                            ? '/regions/$id'
-                            : '/trips/new?region=$id',
-                      ),
+                      onRegionTap: openRegion,
                       onRegionLongPress: (id) => _changeKind(
                         context,
                         ref,

@@ -67,20 +67,26 @@ class NationalMapPage extends ConsumerWidget {
                     scrollDirection: Axis.horizontal,
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Row(
-                      spacing: 16,
                       children: [
                         for (final province in provinceAsset.features)
-                          Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                province.name,
-                                style: Theme.of(context).textTheme.labelSmall,
-                              ),
-                              Text(
-                                '${visited[province.id] ?? 0} / ${totals[province.id] ?? 0}',
-                              ),
-                            ],
+                          TextButton(
+                            style: TextButton.styleFrom(
+                              minimumSize: const Size(44, 44),
+                            ),
+                            onPressed: () =>
+                                context.push('/province/${province.id}'),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  province.name,
+                                  style: Theme.of(context).textTheme.labelSmall,
+                                ),
+                                Text(
+                                  '${visited[province.id] ?? 0} / ${totals[province.id] ?? 0}',
+                                ),
+                              ],
+                            ),
                           ),
                       ],
                     ),
