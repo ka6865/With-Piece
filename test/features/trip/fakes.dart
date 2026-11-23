@@ -3,6 +3,7 @@ import 'package:woori_piece/data/repositories/trip_repository.dart';
 import 'package:woori_piece/features/scan/home_regions.dart';
 import 'package:woori_piece/features/scan/photo_days.dart';
 import 'package:woori_piece/features/scan/trip_candidates.dart';
+import 'package:woori_piece/data/repositories/photo_repository.dart';
 
 class ConfirmCall {
   ConfirmCall(this.title, this.range, this.regionIds, this.source);
@@ -70,9 +71,25 @@ class FakeTripRepository implements TripRepository {
     return const Ok(null);
   }
 
+  final removed = <String>[];
+  final deletedTrips = <String>[];
+  final deletedFiles = <String>[];
+
   @override
-  Future<Result<void>> removeRegion(String tripId, String regionId) async =>
-      const Ok(null);
+  Future<Result<void>> deleteTrip(
+    String tripId,
+    Iterable<PhotoRecord> myPhotos,
+  ) async {
+    deletedTrips.add(tripId);
+    deletedFiles.addAll(myPhotos.map((p) => p.id));
+    return const Ok(null);
+  }
+
+  @override
+  Future<Result<void>> removeRegion(String tripId, String regionId) async {
+    removed.add(regionId);
+    return const Ok(null);
+  }
 
   @override
   Future<Result<void>> rename(String tripId, String title) async {

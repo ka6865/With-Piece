@@ -24,6 +24,13 @@ class _FakeComments extends CommentRepository {
   final List<Comment> rows;
   final added = <String>[];
   final edited = <String>[];
+  final deleted = <String>[];
+
+  @override
+  Future<Result<void>> delete(CommentKind kind, String id) async {
+    deleted.add(id);
+    return const Ok(null);
+  }
 
   @override
   Future<Result<void>> edit(CommentKind kind, String id, String content) async {
@@ -142,6 +149,25 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('고치기'), findsOneWidget);
     expect(find.text('지우기'), findsOneWidget);
+  });
+
+  testWidgets('내 글을 지우기 전에 한 번 더 묻고, 취소하면 남긴다', (tester) async {
+    final repo = await _pump(tester);
+    await tester.longPress(find.text('또 가자'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('지우기'));
+    await tester.pumpAndSettle();
+    expect(find.text('이 글을 지울까요?'), findsOneWidget);
+    await tester.tap(find.text('취소'));
+    await tester.pumpAndSettle();
+    expect(repo.deleted, isEmpty);
+    await tester.longPress(find.text('또 가자'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('지우기'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(TextButton, '지우기'));
+    await tester.pumpAndSettle();
+    expect(repo.deleted, ['g1']);
   });
 
   testWidgets('지난 커플의 글은 읽기만 한다', (tester) async {
